@@ -365,6 +365,30 @@ export const notificationPreferences = pgTable(
   (t) => [primaryKey({ columns: [t.userId, t.eventKey] })]
 );
 
+/** Periodic uptime / health check result per client site. Append-only;
+ *  cleanup of old rows is a future maintenance task (Phase 6 polish). */
+export const healthChecks = pgTable(
+  "health_check",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    clientId: text("client_id")
+      .notNull()
+      .references(() => clients.id, { onDelete: "cascade" }),
+    url: text("url").notNull(),
+    ok: boolean("ok").notNull(),
+    statusCode: integer("status_code"),
+    responseTimeMs: integer("response_time_ms"),
+    error: text("error"),
+    checkedAt: timestamp("checked_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("health_client_time_idx").on(t.clientId, t.checkedAt),
+    index("health_ok_idx").on(t.ok, t.checkedAt),
+  ]
+);
+
 /** Diagnostic-tool reports — useful for follow-up emails and trend graphs. */
 export const scans = pgTable(
   "scan",
@@ -458,6 +482,8 @@ export type Notification = typeof notifications.$inferSelect;
 export type NewNotification = typeof notifications.$inferInsert;
 export type NotificationPreference = typeof notificationPreferences.$inferSelect;
 export type NewNotificationPreference = typeof notificationPreferences.$inferInsert;
+export type HealthCheck = typeof healthChecks.$inferSelect;
+export type NewHealthCheck = typeof healthChecks.$inferInsert;
 
 // Suppress unused-import warning for `sql` (kept for future migration helpers).
 void sql;

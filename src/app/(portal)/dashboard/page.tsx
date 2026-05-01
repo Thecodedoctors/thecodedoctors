@@ -3,7 +3,6 @@ import Link from "next/link";
 import {
   Plus,
   ArrowRight,
-  ShieldCheck,
   CreditCard,
   BookOpen,
   Mail,
@@ -18,6 +17,7 @@ import {
   inProgressForCurrentUser,
 } from "@/server/requests";
 import { latestScanForCurrentUser } from "@/server/activity";
+import { SiteUptimeCard } from "@/components/dashboard/site-uptime-card";
 import {
   StatusPill,
   PriorityPill,
@@ -204,36 +204,9 @@ export default async function HubPage() {
         />
       </section>
 
-      {/* Secondary cards: Site Health + Care Plan */}
+      {/* Site Uptime + Care Plan */}
       <div className="mt-10 grid gap-6 lg:grid-cols-2">
-        <div className="rounded-2xl border border-border bg-surface/40 p-7">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-accent">
-                Site health
-              </p>
-              <h3 className="mt-2 text-xl font-semibold tracking-tight">
-                {lastScan
-                  ? `${lastScan.overallScore}/100 · grade ${lastScan.overallGrade}`
-                  : "Not scanned yet"}
-              </h3>
-              <p className="mt-2 max-w-md text-sm text-muted">
-                {lastScan
-                  ? `Last checkup of ${new URL(lastScan.url).hostname} ${formatRelativeAgo(lastScan.scannedAt)}. Continuous monitoring is on the way.`
-                  : "Run a free checkup to capture a baseline. Continuous monitoring lands in our next release."}
-              </p>
-            </div>
-            <span className="grid h-12 w-12 place-items-center rounded-xl bg-accent-soft text-accent ring-1 ring-inset ring-accent/20">
-              <ShieldCheck className="h-5 w-5" />
-            </span>
-          </div>
-          <div className="mt-6">
-            <Button href="/checkup" variant="secondary" size="md">
-              {lastScan ? "Run a fresh checkup" : "Run a free checkup"}
-              <ArrowRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
+        <SiteUptimeCard clientId={client.id} websiteUrl={client.websiteUrl} />
 
         <div className="rounded-2xl border border-border bg-surface/40 p-7">
           <div className="flex items-start justify-between gap-4">
