@@ -6,6 +6,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { formatRelativeAgo } from "@/lib/time";
 import type { ActivityItem } from "@/server/activity";
 
 const ICONS: Record<ActivityItem["kind"], React.ComponentType<{ className?: string }>> = {
@@ -74,7 +75,7 @@ export function ActivityFeed({
                     </p>
                   )}
                   <p className="mt-1 font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
-                    {formatRelative(item.ts)}
+                    {formatRelativeAgo(item.ts)}
                     {item.clientName && (
                       <>
                         <span className="mx-1.5">·</span>
@@ -133,15 +134,3 @@ function ActivityHeadline({
   }
 }
 
-function formatRelative(d: Date): string {
-  const diff = Date.now() - d.getTime();
-  const s = Math.floor(diff / 1000);
-  if (s < 60) return "just now";
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  const day = Math.floor(h / 24);
-  if (day < 7) return `${day}d ago`;
-  return d.toLocaleDateString();
-}

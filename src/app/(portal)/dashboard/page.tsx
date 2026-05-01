@@ -3,69 +3,63 @@ import Link from "next/link";
 import {
   Plus,
   ArrowRight,
-  Activity,
   ShieldCheck,
   CreditCard,
-  HeartPulse,
-  Sparkles,
   BookOpen,
   Mail,
   Lock,
+  MessageCircle,
 } from "lucide-react";
 import { auth } from "@/auth";
-import { Section } from "@/components/ui/section";
 import { Button } from "@/components/ui/button";
-import { listRequestsForCurrentUser } from "@/server/requests";
 import {
-  activityForCurrentUser,
-  latestScanForCurrentUser,
-} from "@/server/activity";
-import { ActivityFeed } from "@/components/dashboard/activity-feed";
+  listRequestsForCurrentUser,
+  needsYourReplyForCurrentUser,
+  inProgressForCurrentUser,
+} from "@/server/requests";
+import { latestScanForCurrentUser } from "@/server/activity";
 import {
   StatusPill,
   PriorityPill,
   TypeLabel,
 } from "@/components/status-pill";
+import { formatRelativeAgo } from "@/lib/time";
 import { cn } from "@/lib/cn";
 import { getOrCreateClientForUser } from "@/lib/clients";
 
 export const metadata: Metadata = {
-  title: "Dashboard",
-  description: "Your treatment dashboard.",
+  title: "Hub",
+  description: "Your treatment hub.",
   robots: { index: false, follow: false },
 };
 
-export default async function DashboardPage() {
+export default async function HubPage() {
   const session = await auth();
   if (!session?.user) return null;
 
   const firstName = session.user.name?.split(" ")[0] ?? "there";
 
-  const [client, allRequests, activity, lastScan] = await Promise.all([
+  const [client, allRequests, needsReply, inProgress, lastScan] = await Promise.all([
     getOrCreateClientForUser(session.user.id, {
       name: session.user.name,
       email: session.user.email,
     }),
     listRequestsForCurrentUser(),
-    activityForCurrentUser(8),
+    needsYourReplyForCurrentUser(),
+    inProgressForCurrentUser(),
     latestScanForCurrentUser(),
   ]);
 
   const open = allRequests.filter(
     (r) => r.status !== "healed" && r.status !== "closed"
   ).length;
-  const inTreatment = allRequests.filter(
-    (r) => r.status === "in_treatment" || r.status === "in_review"
-  ).length;
-  const healed = allRequests.filter((r) => r.status === "healed").length;
-  const lastReplyTs = activity.find((a) => a.kind === "message_received")?.ts;
-
-  const recent = allRequests.slice(0, 5);
+  const resolved = allRequests.filter((r) => r.status === "healed").length;
+  const totalActive = needsReply.length + inProgress.length;
 
   return (
-    <Section size="md" reveal={false} className="!py-12 md:!py-14">
+    <div className="mx-auto w-full max-w-[1280px] px-6 py-10 md:px-10 md:py-12">
       {/* Welcome banner */}
-      <div className="flex flex-wrap items-end justify-between gap-4">
+      <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="font-mono text-xs uppercase tracking-[0.18em] text-accent">
             Patient Portal
@@ -74,115 +68,145 @@ export default async function DashboardPage() {
             Hi {firstName}.
           </h1>
           <p className="mt-2 text-base text-muted">
-            {open === 0
-              ? "Inbox is clear. Great place to be."
-              : `You have ${open} open request${open === 1 ? "" : "s"}${
-                  inTreatment ? ` · ${inTreatment} in treatment` : ""
-                }.`}
+            {totalActive === 0
+              ? open === 0
+                ? "Inbox is clear. Submit a request when something needs a doctor."
+                : `${open} open request${open === 1 ? "" : "s"} · nothing waiting on you.`
+              : needsReply.length > 0
+                ? `${needsReply.length} request${needsReply.length === 1 ? "" : "s"} ${needsReply.length === 1 ? "needs" : "need"} your reply.`
+                : `${inProgress.length} in progress.`}
           </p>
         </div>
         <Button href="/requests/new" variant="primary" size="md">
           <Plus className="h-4 w-4" />
           New request
         </Button>
-      </div>
+      </header>
 
-      {/* Stat strip */}
-      <ul className="mt-10 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <StatCard
-          label="Open requests"
-          value={open}
-          icon={Activity}
-          tone="accent"
-        />
-        <StatCard
-          label="In treatment"
-          value={inTreatment}
-          icon={HeartPulse}
-          tone="warning"
-        />
-        <StatCard
-          label="Healed"
-          value={healed}
-          icon={Sparkles}
-          tone="success"
-        />
-        <StatCard
-          label="Last reply"
-          value={lastReplyTs ? formatRelativeShort(lastReplyTs) : "—"}
-          icon={Mail}
-          tone="muted"
-        />
-        <StatCard
-          label="Site health"
-          value={lastScan ? `${lastScan.overallScore}/100` : "—"}
-          subtitle={lastScan ? lastScan.overallGrade : "Run a checkup"}
-          icon={ShieldCheck}
-          tone={lastScan ? (lastScan.overallScore >= 80 ? "success" : "warning") : "muted"}
-        />
-      </ul>
-
-      {/* Two-column main */}
-      <div className="mt-10 grid gap-6 lg:grid-cols-12">
-        {/* Recent requests — left, wider */}
-        <div className="lg:col-span-7">
-          <PanelHeader
-            title="Recent requests"
-            href="/requests"
-            cta="View all"
-          />
-          {recent.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-border-strong bg-surface/30 p-10 text-center">
-              <p className="font-mono text-xs uppercase tracking-[0.18em] text-muted">
-                Empty
-              </p>
-              <p className="mt-3 text-foreground">
-                Submit your first request to begin treatment.
-              </p>
-              <div className="mt-6">
-                <Button href="/requests/new" variant="primary" size="md">
-                  Submit a request
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <ul className="divide-y divide-border/60 overflow-hidden rounded-2xl border border-border bg-surface/40">
-              {recent.map((r) => (
-                <li key={r.id}>
-                  <Link
-                    href={`/requests/${r.id}`}
-                    className="block px-5 py-4 transition-colors hover:bg-surface/80"
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="flex-1 min-w-0">
-                        <h3 className="text-base font-medium text-foreground">
-                          {r.title}
-                        </h3>
-                        <div className="mt-1.5 flex flex-wrap items-center gap-2.5">
-                          <TypeLabel type={r.type} />
-                          <span className="text-muted">·</span>
-                          <PriorityPill priority={r.priority} />
-                        </div>
+      {/* Needs your reply — the headline panel */}
+      {needsReply.length > 0 && (
+        <section className="mt-10">
+          <div className="mb-3 flex items-baseline justify-between">
+            <h2 className="font-mono text-xs uppercase tracking-[0.18em] text-accent">
+              Needs your reply
+            </h2>
+            <p className="text-xs text-muted">
+              {needsReply.length} item{needsReply.length === 1 ? "" : "s"}
+            </p>
+          </div>
+          <ul className="space-y-3">
+            {needsReply.map((r) => (
+              <li key={r.id}>
+                <Link
+                  href={`/requests/${r.id}`}
+                  className="group block rounded-2xl border border-accent/30 bg-accent-soft/30 p-5 transition-colors hover:border-accent/60 hover:bg-accent-soft/40"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2.5 mb-2">
+                        <span className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.18em] text-accent">
+                          <MessageCircle className="h-3 w-3" />
+                          Doctor replied · {formatRelativeAgo(r.lastReplyAt)}
+                        </span>
+                        <span className="text-muted">·</span>
+                        <PriorityPill priority={r.priority} />
                       </div>
-                      <StatusPill status={r.status} />
+                      <h3 className="text-base font-medium text-foreground">
+                        {r.title}
+                      </h3>
+                      <p className="mt-1.5 text-sm text-muted line-clamp-2">
+                        {r.lastReplyPreview}
+                      </p>
                     </div>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+                    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-accent text-background px-3 py-1.5 text-xs font-medium transition-transform group-hover:translate-x-0.5">
+                      Reply
+                      <ArrowRight className="h-3.5 w-3.5" />
+                    </span>
+                  </div>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
-        {/* Activity feed — right */}
-        <div className="lg:col-span-5">
-          <PanelHeader title="Recent activity" />
-          <ActivityFeed items={activity} variant="client" />
-        </div>
-      </div>
+      {/* In progress */}
+      {inProgress.length > 0 && (
+        <section className="mt-10">
+          <div className="mb-3 flex items-baseline justify-between">
+            <h2 className="font-mono text-xs uppercase tracking-[0.18em] text-muted">
+              In progress
+            </h2>
+            <p className="text-xs text-muted">
+              {inProgress.length} item{inProgress.length === 1 ? "" : "s"}
+            </p>
+          </div>
+          <ul className="divide-y divide-border/60 overflow-hidden rounded-2xl border border-border bg-surface/40">
+            {inProgress.map((r) => (
+              <li key={r.id}>
+                <Link
+                  href={`/requests/${r.id}`}
+                  className="block px-5 py-4 transition-colors hover:bg-surface/80"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-base font-medium text-foreground">
+                        {r.title}
+                      </h3>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-2.5">
+                        <TypeLabel type={r.type} />
+                        <span className="text-muted">·</span>
+                        <PriorityPill priority={r.priority} />
+                        <span className="text-muted">·</span>
+                        <span className="font-mono text-xs text-muted">
+                          Updated {formatRelativeAgo(r.updatedAt)}
+                        </span>
+                      </div>
+                    </div>
+                    <StatusPill status={r.status} />
+                  </div>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
-      {/* Site health + Plan & Care */}
-      <div className="mt-10 grid gap-6 lg:grid-cols-12">
-        <div className="lg:col-span-7 rounded-2xl border border-border bg-surface/40 p-7">
+      {/* Empty state — only if NO active items at all */}
+      {needsReply.length === 0 && inProgress.length === 0 && (
+        <section className="mt-12 rounded-2xl border border-dashed border-border-strong bg-surface/30 p-10 text-center">
+          <p className="font-mono text-xs uppercase tracking-[0.18em] text-muted">
+            Quiet
+          </p>
+          <p className="mt-3 max-w-md mx-auto text-foreground">
+            {open === 0
+              ? "No requests yet. Submit one when something on your site needs a doctor's attention."
+              : "Nothing waiting on you right now. We'll let you know if that changes."}
+          </p>
+          <div className="mt-6">
+            <Button href="/requests/new" variant="primary" size="md">
+              <Plus className="h-4 w-4" />
+              {open === 0 ? "Submit your first request" : "Submit another request"}
+            </Button>
+          </div>
+        </section>
+      )}
+
+      {/* Stat strip — demoted, not the headline */}
+      <section className="mt-12 grid gap-3 grid-cols-2 sm:grid-cols-4 rounded-2xl border border-border bg-surface/30 p-4">
+        <Stat label="Open" value={open} />
+        <Stat label="In progress" value={inProgress.length} />
+        <Stat label="Resolved" value={resolved} />
+        <Stat
+          label="Site health"
+          value={lastScan ? `${lastScan.overallScore}` : "—"}
+          suffix={lastScan ? `/100` : ""}
+        />
+      </section>
+
+      {/* Secondary cards: Site Health + Care Plan */}
+      <div className="mt-10 grid gap-6 lg:grid-cols-2">
+        <div className="rounded-2xl border border-border bg-surface/40 p-7">
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-accent">
@@ -194,27 +218,9 @@ export default async function DashboardPage() {
                   : "Not scanned yet"}
               </h3>
               <p className="mt-2 max-w-md text-sm text-muted">
-                {lastScan ? (
-                  <>
-                    Last scan of{" "}
-                    <span className="font-mono text-foreground">
-                      {new URL(lastScan.url).hostname}
-                    </span>{" "}
-                    on{" "}
-                    {lastScan.scannedAt.toLocaleDateString(undefined, {
-                      month: "short",
-                      day: "numeric",
-                    })}
-                    . Continuous monitoring + Lighthouse-over-time graphs land
-                    in our next release.
-                  </>
-                ) : (
-                  <>
-                    Run a free checkup to capture a baseline. Continuous
-                    monitoring (Lighthouse over time, uptime, security grade,
-                    SSL expiry) ships in the next release.
-                  </>
-                )}
+                {lastScan
+                  ? `Last checkup of ${new URL(lastScan.url).hostname} ${formatRelativeAgo(lastScan.scannedAt)}. Continuous monitoring is on the way.`
+                  : "Run a free checkup to capture a baseline. Continuous monitoring lands in our next release."}
               </p>
             </div>
             <span className="grid h-12 w-12 place-items-center rounded-xl bg-accent-soft text-accent ring-1 ring-inset ring-accent/20">
@@ -229,7 +235,7 @@ export default async function DashboardPage() {
           </div>
         </div>
 
-        <div className="lg:col-span-5 rounded-2xl border border-border bg-surface/40 p-7">
+        <div className="rounded-2xl border border-border bg-surface/40 p-7">
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-accent">
@@ -240,7 +246,7 @@ export default async function DashboardPage() {
               </h3>
               <p className="mt-2 max-w-sm text-sm text-muted">
                 {client.plan === "checkup"
-                  ? "Single checkup · upgrade to General or Premium Care for ongoing monitoring."
+                  ? "Single checkup. Upgrade to General or Premium Care for ongoing monitoring."
                   : "Active monthly care."}
               </p>
             </div>
@@ -250,15 +256,14 @@ export default async function DashboardPage() {
           </div>
           <div className="mt-6 inline-flex items-center gap-2 text-xs text-muted">
             <Lock className="h-3 w-3" />
-            Self-service billing in our next release. To change plans now,
-            reply on any request.
+            Self-service billing in our next release. To change plans now, reply on any request.
           </div>
         </div>
       </div>
 
       {/* Knowledge base + Contact */}
-      <div className="mt-10 grid gap-6 lg:grid-cols-12">
-        <div className="lg:col-span-7 rounded-2xl border border-border bg-surface/40 p-7">
+      <div className="mt-10 grid gap-6 lg:grid-cols-2">
+        <div className="rounded-2xl border border-border bg-surface/40 p-7">
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-accent">
@@ -268,8 +273,7 @@ export default async function DashboardPage() {
                 Articles, tips, and FAQs
               </h3>
               <p className="mt-2 max-w-md text-sm text-muted">
-                Plain-language explainers on what we&apos;re fixing and why —
-                from HSTS to Core Web Vitals. Library opens in our next release.
+                Plain-language explainers on what we&apos;re fixing and why — from HSTS to Core Web Vitals. Library opens in our next release.
               </p>
             </div>
             <span className="grid h-12 w-12 place-items-center rounded-xl bg-accent-soft text-accent ring-1 ring-inset ring-accent/20">
@@ -278,7 +282,7 @@ export default async function DashboardPage() {
           </div>
         </div>
 
-        <div className="lg:col-span-5 rounded-2xl border border-border-strong bg-accent-soft/30 p-7">
+        <div className="rounded-2xl border border-border-strong bg-accent-soft/30 p-7">
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-accent">
@@ -288,8 +292,7 @@ export default async function DashboardPage() {
                 Reach us anytime.
               </h3>
               <p className="mt-2 max-w-sm text-sm text-muted">
-                The fastest path is to submit a request — that opens a thread
-                with your doctor and lives in your file.
+                The fastest path is to submit a request — that opens a thread with your doctor and lives in your file.
               </p>
             </div>
             <span className="grid h-12 w-12 place-items-center rounded-xl bg-accent text-background">
@@ -304,76 +307,27 @@ export default async function DashboardPage() {
           </div>
         </div>
       </div>
-    </Section>
+
+    </div>
   );
 }
 
-function StatCard({
+function Stat({
   label,
   value,
-  subtitle,
-  icon: Icon,
-  tone = "accent",
+  suffix,
 }: {
   label: string;
   value: number | string;
-  subtitle?: string;
-  icon: React.ComponentType<{ className?: string }>;
-  tone?: "accent" | "warning" | "success" | "muted";
+  suffix?: string;
 }) {
-  const toneClasses: Record<typeof tone & string, string> = {
-    accent: "text-accent bg-accent-soft ring-accent/20",
-    warning: "text-warning bg-warning/10 ring-warning/30",
-    success: "text-success bg-success/10 ring-success/30",
-    muted: "text-muted bg-muted/10 ring-muted/20",
-  };
   return (
-    <li className="flex flex-col gap-3 rounded-2xl border border-border bg-surface/40 p-5">
-      <span
-        className={cn(
-          "grid h-8 w-8 place-items-center rounded-lg ring-1 ring-inset",
-          toneClasses[tone]
-        )}
-      >
-        <Icon className="h-4 w-4" />
-      </span>
-      <div>
-        <p className="font-mono text-2xl font-semibold tracking-tight text-foreground">
-          {value}
-        </p>
-        {subtitle && (
-          <p className="mt-0.5 font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
-            {subtitle}
-          </p>
-        )}
-      </div>
+    <div className={cn("flex flex-col gap-1 px-2 py-1")}>
       <p className="text-xs uppercase tracking-[0.14em] text-muted">{label}</p>
-    </li>
-  );
-}
-
-function PanelHeader({
-  title,
-  href,
-  cta,
-}: {
-  title: string;
-  href?: string;
-  cta?: string;
-}) {
-  return (
-    <div className="mb-3 flex items-baseline justify-between">
-      <h2 className="font-mono text-xs uppercase tracking-[0.18em] text-muted">
-        {title}
-      </h2>
-      {href && cta && (
-        <Link
-          href={href}
-          className="inline-flex items-center gap-1.5 text-xs text-muted transition-colors hover:text-foreground"
-        >
-          {cta} <ArrowRight className="h-3 w-3" />
-        </Link>
-      )}
+      <p className="font-mono text-xl font-semibold tracking-tight text-foreground">
+        {value}
+        {suffix && <span className="text-muted text-sm">{suffix}</span>}
+      </p>
     </div>
   );
 }
@@ -383,17 +337,4 @@ function planLabel(plan: string): string {
   if (plan === "general") return "General Care";
   if (plan === "premium") return "Premium Care";
   return "Custom plan";
-}
-
-function formatRelativeShort(d: Date): string {
-  const diff = Date.now() - d.getTime();
-  const s = Math.floor(diff / 1000);
-  if (s < 60) return "just now";
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h`;
-  const day = Math.floor(h / 24);
-  if (day < 7) return `${day}d`;
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }

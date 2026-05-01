@@ -1,10 +1,10 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { PortalShell } from "@/components/portal-shell";
+import { AppShell } from "@/components/portal/app-shell";
 
 /**
- * Client portal layout. Auth-gated. Staff users get redirected to the admin
- * portal (they shouldn't see this view at all).
+ * Client portal layout. Auth-gated. Staff users get redirected to the
+ * admin portal — they shouldn't see this view.
  */
 export default async function ClientPortalLayout({
   children,
@@ -18,19 +18,18 @@ export default async function ClientPortalLayout({
   if (session.user.role && session.user.role !== "client") {
     redirect("/admin");
   }
-  // Staff with 2FA pending would normally hit a /verify-2fa page first.
-  // Phase 5 wires that flow; for now we trust DB state.
 
   return (
-    <PortalShell
+    <AppShell
       variant="client"
       user={{
+        id: session.user.id,
         email: session.user.email,
         name: session.user.name,
         role: session.user.role,
       }}
     >
       {children}
-    </PortalShell>
+    </AppShell>
   );
 }

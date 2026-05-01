@@ -5,6 +5,7 @@ import { useFormStatus } from "react-dom";
 import { Send, Lock, Stethoscope } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
+import { formatRelativeAgo } from "@/lib/time";
 import { addMessage } from "@/server/messages";
 import { isStaff } from "@/lib/auth-helpers";
 
@@ -95,7 +96,7 @@ function MessageRow({
         </span>
         <span className="text-muted">·</span>
         <time dateTime={time.toISOString()} className="font-mono text-muted">
-          {formatRelativeTime(time)}
+          {formatRelativeAgo(time)}
         </time>
         {message.internal && (
           <>
@@ -193,16 +194,3 @@ function SendButton() {
   );
 }
 
-function formatRelativeTime(d: Date): string {
-  const now = Date.now();
-  const diff = now - d.getTime();
-  const sec = Math.floor(diff / 1000);
-  if (sec < 60) return "just now";
-  const min = Math.floor(sec / 60);
-  if (min < 60) return `${min}m ago`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}h ago`;
-  const day = Math.floor(hr / 24);
-  if (day < 7) return `${day}d ago`;
-  return d.toLocaleDateString();
-}

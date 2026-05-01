@@ -8,28 +8,33 @@ type Status =
   | "healed"
   | "closed";
 
+/**
+ * Status labels per PORTAL-SPEC.md voice rule. The DB enum keeps the
+ * medical names (so we can roll back to medical labels later without a
+ * migration); the patient-visible UI uses plain action language.
+ */
 const STATUS: Record<
   Status,
   { label: string; tone: string }
 > = {
   triaged: {
-    label: "Triaged",
+    label: "New",
     tone: "bg-muted/10 text-muted ring-muted/20",
   },
   diagnosed: {
-    label: "Diagnosed",
+    label: "Reviewed",
     tone: "bg-accent-soft text-accent ring-accent/30",
   },
   in_treatment: {
-    label: "In Treatment",
+    label: "In progress",
     tone: "bg-warning/10 text-warning ring-warning/30",
   },
   in_review: {
-    label: "In Review",
+    label: "Awaiting your approval",
     tone: "bg-accent-soft text-accent ring-accent/30",
   },
   healed: {
-    label: "Healed",
+    label: "Resolved",
     tone: "bg-success/10 text-success ring-success/30",
   },
   closed: {
@@ -129,4 +134,17 @@ export function TypeLabel({ type }: { type: string }) {
       {TYPE_LABELS[type] ?? type}
     </span>
   );
+}
+
+export const STATUS_ORDER: Status[] = [
+  "triaged",
+  "diagnosed",
+  "in_treatment",
+  "in_review",
+  "healed",
+  "closed",
+];
+
+export function statusLabel(status: string): string {
+  return (STATUS[status as Status] ?? { label: status }).label;
 }

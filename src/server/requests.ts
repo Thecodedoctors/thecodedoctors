@@ -3,12 +3,13 @@
 import {
   db,
   requests,
+  messages,
   clients,
   users,
   type Request as RequestRow,
   type NewRequest,
 } from "@/db";
-import { eq, desc, and, sql } from "drizzle-orm";
+import { eq, desc, and, sql, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireUser, requireStaff, isStaff } from "@/lib/auth-helpers";
@@ -123,6 +124,122 @@ export async function listRequestsForCurrentUser() {
     })
     .from(requests)
     .where(eq(requests.clientId, client.id))
+    .orderBy(desc(requests.updatedAt));
+}
+
+/**
+ * Open requests where the LAST visible message was sent by someone other
+ * than the current user — i.e., "the ball is in your court."
+ *
+ * Implementation: pull each request's latest non-internal message, filter
+ * client-side. Adequate for any single client's volume; if a patient ever
+ * has hundreds of open requests we'll move this to a SQL window function.
+ */
+export async function needsYourReplyForCurrentUser() {
+  const session = await requireUser();
+  const client = await getOrCreateClientForUser(session.user.id, {
+    name: session.user.name,
+    email: session.user.email,
+  });
+
+  // 1. All open requests.
+  const open = await db()
+    .select({
+      id: requests.id,
+      title: requests.title,
+      type: requests.type,
+      priority: requests.priority,
+      status: requests.status,
+      updatedAt: requests.updatedAt,
+    })
+    .from(requests)
+    .where(
+      and(
+        eq(requests.clientId, client.id),
+        sql`${requests.status} not in ('healed','closed')`
+      )
+    );
+
+  if (open.length === 0) return [];
+
+  // 2. Latest visible message per request, with author id.
+  const ids = open.map((r) => r.id);
+  const lastMessages = await db()
+    .select({
+      requestId: messages.requestId,
+      authorId: messages.authorUserId,
+      createdAt: messages.createdAt,
+      body: messages.body,
+    })
+    .from(messages)
+    .where(
+      and(
+        inArray(messages.requestId, ids),
+        eq(messages.internal, false)
+      )
+    )
+    .orderBy(desc(messages.createdAt));
+
+  // Map: requestId -> latest message for that request
+  const latestByRequest = new Map<
+    string,
+    { authorId: string | null; createdAt: Date; body: string }
+  >();
+  for (const m of lastMessages) {
+    if (!latestByRequest.has(m.requestId)) {
+      latestByRequest.set(m.requestId, {
+        authorId: m.authorId,
+        createdAt: new Date(m.createdAt),
+        body: m.body,
+      });
+    }
+  }
+
+  // 3. Filter to requests where last message wasn't from this user.
+  const meId = session.user.id;
+  return open
+    .filter((r) => {
+      const last = latestByRequest.get(r.id);
+      return last && last.authorId !== meId;
+    })
+    .map((r) => {
+      const last = latestByRequest.get(r.id)!;
+      return {
+        ...r,
+        lastReplyAt: last.createdAt,
+        lastReplyPreview: last.body.slice(0, 140),
+      };
+    })
+    .sort((a, b) => b.lastReplyAt.getTime() - a.lastReplyAt.getTime());
+}
+
+/**
+ * Open requests in active states (Reviewed / In progress / Awaiting approval)
+ * — the work-in-flight panel for the patient hub.
+ */
+export async function inProgressForCurrentUser() {
+  const session = await requireUser();
+  const client = await getOrCreateClientForUser(session.user.id, {
+    name: session.user.name,
+    email: session.user.email,
+  });
+
+  return db()
+    .select({
+      id: requests.id,
+      title: requests.title,
+      type: requests.type,
+      priority: requests.priority,
+      status: requests.status,
+      updatedAt: requests.updatedAt,
+    })
+    .from(requests)
+    .where(
+      and(
+        eq(requests.clientId, client.id),
+        sql`${requests.status} in ('diagnosed','in_treatment','in_review')`
+      )
+    )
     .orderBy(desc(requests.updatedAt));
 }
 

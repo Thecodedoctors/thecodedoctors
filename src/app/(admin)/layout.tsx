@@ -1,14 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { PortalShell } from "@/components/portal-shell";
+import { AppShell } from "@/components/portal/app-shell";
 
-/**
- * Admin (staff) portal layout. Only roles in STAFF_ROLES can see this.
- * Clients hitting /admin/* get redirected to their dashboard.
- *
- * Phase 5 will gate this further on TOTP verification — staff sessions
- * without a verified 2FA token redirect to /verify-2fa first.
- */
 const STAFF_ROLES = new Set([
   "doctor",
   "senior_doctor",
@@ -16,6 +9,13 @@ const STAFF_ROLES = new Set([
   "readonly",
 ]);
 
+/**
+ * Practice portal layout. Only staff roles can see this; clients hitting
+ * /admin/* get redirected to their dashboard.
+ *
+ * Phase 5 will gate this further on TOTP verification — staff sessions
+ * without a verified 2FA token will redirect to /verify-2fa first.
+ */
 export default async function AdminLayout({
   children,
 }: {
@@ -30,15 +30,16 @@ export default async function AdminLayout({
   }
 
   return (
-    <PortalShell
+    <AppShell
       variant="admin"
       user={{
+        id: session.user.id,
         email: session.user.email,
         name: session.user.name,
         role: session.user.role,
       }}
     >
       {children}
-    </PortalShell>
+    </AppShell>
   );
 }

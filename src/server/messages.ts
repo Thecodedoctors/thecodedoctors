@@ -62,14 +62,19 @@ export async function addMessage(
     .set({ updatedAt: new Date() })
     .where(eq(requests.id, requestId));
 
-  if (staff) {
-    await recordAudit({
-      actorUserId: session.user.id,
-      action: internal ? "message.add_internal" : "message.add",
-      targetType: "request",
-      targetId: requestId,
-    });
-  }
+  // Audit log every message — staff actions, client replies, internal notes.
+  // Phase 5 will add a viewer at /admin/audit; for now the log is silent
+  // insurance.
+  await recordAudit({
+    actorUserId: session.user.id,
+    action: internal
+      ? "message.add_internal"
+      : staff
+        ? "message.add_staff"
+        : "message.add_client",
+    targetType: "request",
+    targetId: requestId,
+  });
 
   revalidatePath(`/admin/requests/${requestId}`);
   revalidatePath(`/dashboard/requests/${requestId}`);
