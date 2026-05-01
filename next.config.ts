@@ -3,12 +3,16 @@ import type { NextConfig } from "next";
 const isDev = process.env.NODE_ENV === "development";
 
 // Strict CSP for the marketing site.
-// Static-rendered pages can't use nonces, so we use a strict policy without
-// 'unsafe-inline' for scripts. Styles still need 'unsafe-inline' because Next/Tailwind
-// inject critical inline styles. We will tighten this further in Phase 7.
+// Static-rendered pages can't use nonces, so we allow 'unsafe-inline' for both
+// scripts and styles. Without 'unsafe-inline' on script-src, Next.js's inline
+// hydration scripts (the __next_f.push() bootstrap) get blocked and React never
+// hydrates the client components — interactive forms fall through to native
+// HTML submission. The proper long-term fix is nonce-based CSP via proxy.ts
+// (deferred to Phase 7 polish), which keeps a strict posture while supporting
+// hydration of static-rendered pages.
 const csp = [
   "default-src 'self'",
-  `script-src 'self'${isDev ? " 'unsafe-eval'" : ""}`,
+  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' blob: data:",
   "font-src 'self' data:",
