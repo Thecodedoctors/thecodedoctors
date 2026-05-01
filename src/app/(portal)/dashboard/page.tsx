@@ -33,7 +33,7 @@ export default async function DashboardPage() {
             Hi {firstName}.
           </h1>
         </div>
-        <Button href="/dashboard/requests/new" variant="primary" size="md">
+        <Button href="/requests/new" variant="primary" size="md">
           <Plus className="h-4 w-4" />
           New request
         </Button>
@@ -47,7 +47,7 @@ export default async function DashboardPage() {
               title="Submit a request"
               body="Tell us what's wrong or what you want changed. We'll triage and respond within a business day."
               cta="New request"
-              href="/dashboard/requests/new"
+              href="/requests/new"
             />
             <ActionCard
               icon={Activity}
@@ -62,7 +62,7 @@ export default async function DashboardPage() {
               title="Messages"
               body="Reply on any request to message your assigned doctor directly."
               cta="View requests"
-              href="/dashboard/requests"
+              href="/requests"
             />
           </div>
 
@@ -75,7 +75,7 @@ export default async function DashboardPage() {
             </p>
             <div className="mt-6">
               <Button
-                href="/dashboard/requests/new"
+                href="/requests/new"
                 variant="primary"
                 size="md"
               >
@@ -91,7 +91,7 @@ export default async function DashboardPage() {
               Recent requests
             </h2>
             <Link
-              href="/dashboard/requests"
+              href="/requests"
               className="inline-flex items-center gap-1.5 text-xs text-muted transition-colors hover:text-foreground"
             >
               View all <ArrowRight className="h-3 w-3" />
@@ -101,7 +101,7 @@ export default async function DashboardPage() {
             {recentRequests.map((r) => (
               <li key={r.id}>
                 <Link
-                  href={`/dashboard/requests/${r.id}`}
+                  href={`/requests/${r.id}`}
                   className="block px-6 py-5 transition-colors hover:bg-surface/80"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">

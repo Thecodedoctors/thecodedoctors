@@ -41,7 +41,7 @@ export default async function RequestDetailPage({
     <Section size="md" reveal={false}>
       <div className="mx-auto max-w-3xl">
         <Link
-          href="/dashboard/requests"
+          href="/requests"
           className="inline-flex items-center gap-1.5 text-sm text-muted transition-colors hover:text-foreground"
         >
           <ArrowLeft className="h-3.5 w-3.5" />

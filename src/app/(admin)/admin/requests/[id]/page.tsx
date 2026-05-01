@@ -54,7 +54,7 @@ export default async function AdminRequestDetailPage({
     <Section size="md" reveal={false}>
       <div className="mx-auto max-w-3xl">
         <Link
-          href="/admin"
+          href="/"
           className="inline-flex items-center gap-1.5 text-sm text-muted transition-colors hover:text-foreground"
         >
           <ArrowLeft className="h-3.5 w-3.5" />

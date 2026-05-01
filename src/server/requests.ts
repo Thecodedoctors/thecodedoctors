@@ -100,7 +100,9 @@ export async function createRequest(
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/requests");
-  redirect(`/dashboard/requests/${inserted.id}`);
+  // Bare path — proxy.ts on the live site will resolve this to the right
+  // file under /dashboard/* via subdomain rewrite.
+  redirect(`/requests/${inserted.id}`);
 }
 
 export async function listRequestsForCurrentUser() {

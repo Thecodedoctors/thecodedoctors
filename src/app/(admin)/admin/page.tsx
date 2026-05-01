@@ -70,7 +70,7 @@ export default async function AdminHomePage() {
             {requests.map((r) => (
               <li key={r.id}>
                 <Link
-                  href={`/admin/requests/${r.id}`}
+                  href={`/requests/${r.id}`}
                   className="block px-6 py-5 transition-colors hover:bg-surface/80"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">

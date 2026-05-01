@@ -8,11 +8,11 @@ type NavItem = { href: string; label: string; icon: React.ComponentType<{ classN
 type Variant = "client" | "admin";
 
 const CLIENT_NAV: NavItem[] = [
-  { href: "/dashboard", label: "Dashboard", icon: FileText },
-  { href: "/dashboard/requests", label: "Requests", icon: FileText },
+  { href: "/", label: "Dashboard", icon: FileText },
+  { href: "/requests", label: "Requests", icon: FileText },
 ];
 
-const ADMIN_NAV: NavItem[] = [{ href: "/admin", label: "Inbox", icon: FileText }];
+const ADMIN_NAV: NavItem[] = [{ href: "/", label: "Inbox", icon: FileText }];
 
 export function PortalShell({
   variant,
@@ -25,7 +25,7 @@ export function PortalShell({
 }) {
   const nav = variant === "admin" ? ADMIN_NAV : CLIENT_NAV;
   const accent = variant === "admin" ? "text-signal" : "text-accent";
-  const homeHref = variant === "admin" ? "/admin" : "/dashboard";
+  const homeHref = "/";
 
   return (
     <div className="flex min-h-screen flex-col">

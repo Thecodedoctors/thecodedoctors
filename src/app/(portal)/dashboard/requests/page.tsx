@@ -29,7 +29,7 @@ export default async function RequestsListPage() {
                 : `${requests.length} requests`}
           </h1>
         </div>
-        <Button href="/dashboard/requests/new" variant="primary" size="md">
+        <Button href="/requests/new" variant="primary" size="md">
           <Plus className="h-4 w-4" />
           New request
         </Button>
@@ -45,7 +45,7 @@ export default async function RequestsListPage() {
           </p>
           <div className="mt-6">
             <Button
-              href="/dashboard/requests/new"
+              href="/requests/new"
               variant="primary"
               size="md"
             >
@@ -58,7 +58,7 @@ export default async function RequestsListPage() {
           {requests.map((r) => (
             <li key={r.id}>
               <Link
-                href={`/dashboard/requests/${r.id}`}
+                href={`/requests/${r.id}`}
                 className="block px-6 py-5 transition-colors hover:bg-surface/80"
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
