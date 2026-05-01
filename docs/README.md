@@ -6,6 +6,7 @@ Every meaningful decision, plan, and progress update lives here.
 ## Index
 
 - [`../CLAUDE.md`](../CLAUDE.md) — master context loaded automatically by Claude Code
+- [`PORTAL-SPEC.md`](PORTAL-SPEC.md) — product spec for the patient + practice portals (IA, journeys, permissions, layout, mobile, notifications, data model)
 - [`ROADMAP.md`](ROADMAP.md) — 7 phases of the build with status checkboxes
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — stack, infra, three-surface architecture
 - [`BRAND.md`](BRAND.md) — voice, vocabulary, palette, typography

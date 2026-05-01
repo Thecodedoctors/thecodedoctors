@@ -39,6 +39,7 @@ Patient Stories, Doctor (= staff member), House Call (= on-site/emergency work).
 See `docs/BRAND.md` for full voice & tone guide.
 
 ## Where to find things
+- `docs/PORTAL-SPEC.md` — **product specification** for the patient + practice portals (information architecture, journeys, permissions, layout, mobile, notifications, data model, phasing). When this disagrees with code, the spec wins.
 - `docs/ROADMAP.md` — 7-phase build plan with status checkboxes (the source of truth for "what's done")
 - `docs/ARCHITECTURE.md` — stack, infra, three-surface architecture, domain wiring
 - `docs/BRAND.md` — voice, palette, typography, naming, copy patterns
