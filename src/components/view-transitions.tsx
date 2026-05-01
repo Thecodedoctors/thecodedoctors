@@ -7,32 +7,30 @@ import { useRouter } from "next/navigation";
  * Wraps every internal navigation in document.startViewTransition() so that
  * cross-page transitions feel like a native mobile-app screen change.
  *
- * Works with React 19.2 stable (no canary required). The actual fade/slide
- * animation comes from the ::view-transition-old/new CSS in globals.css.
+ * Defensive design: if the view transition or the Next.js router.push throws
+ * for any reason, we fall back to native browser navigation via
+ * window.location.assign(). The user always navigates — the click is never
+ * silently dead.
  *
- * Browsers without startViewTransition (e.g. older Firefox) fall through to
- * standard Next.js client navigation — no jank, just no animation.
+ * Browsers without startViewTransition (older Firefox, iOS Safari < 18) skip
+ * the animation but still get standard Next.js client navigation.
  */
 export function ViewTransitions() {
   const router = useRouter();
 
   useEffect(() => {
     if (typeof document === "undefined") return;
-    if (typeof document.startViewTransition !== "function") return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+    const reducedMotion =
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    const supportsVT =
+      typeof document.startViewTransition === "function" && !reducedMotion;
 
     const onClick = (event: MouseEvent) => {
-      // Only plain left-clicks, no modifiers.
-      if (
-        event.button !== 0 ||
-        event.metaKey ||
-        event.ctrlKey ||
-        event.shiftKey ||
-        event.altKey ||
-        event.defaultPrevented
-      ) {
-        return;
-      }
+      if (event.button !== 0) return;
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      if (event.defaultPrevented) return;
 
       const target = event.target as HTMLElement | null;
       const anchor = target?.closest?.("a");
@@ -40,15 +38,16 @@ export function ViewTransitions() {
 
       const href = anchor.getAttribute("href");
       if (!href) return;
-
-      // Skip non-navigations.
-      if (href.startsWith("#")) return;
-      if (href.startsWith("mailto:") || href.startsWith("tel:")) return;
+      if (
+        href.startsWith("#") ||
+        href.startsWith("mailto:") ||
+        href.startsWith("tel:")
+      ) {
+        return;
+      }
       if (anchor.hasAttribute("download")) return;
-      if (anchor.getAttribute("rel")?.includes("external")) return;
       if (anchor.target && anchor.target !== "_self") return;
 
-      // External link?
       let url: URL;
       try {
         url = new URL(href, window.location.href);
@@ -57,38 +56,15 @@ export function ViewTransitions() {
       }
       if (url.origin !== window.location.origin) return;
 
-      // Same path? Let Next handle (no transition needed).
-      const target_path = url.pathname + url.search + url.hash;
-      const current_path =
+      const targetPath = url.pathname + url.search + url.hash;
+      const currentPath =
         window.location.pathname + window.location.search + window.location.hash;
-      if (target_path === current_path) return;
+      if (targetPath === currentPath) return;
 
-      // We're handling it.
+      // We're committing to handle this click. From here on, every path
+      // results in navigation — no dead clicks.
       event.preventDefault();
-
-      const startTransition = document.startViewTransition;
-      if (!startTransition) {
-        router.push(target_path);
-        return;
-      }
-
-      startTransition(() => {
-        router.push(target_path);
-        // Resolve once the new pathname is reflected in the URL — gives React
-        // a chance to commit the new page before the snapshot is captured.
-        return new Promise<void>((resolve) => {
-          const want = url.pathname;
-          const start = performance.now();
-          const tick = () => {
-            if (window.location.pathname === want || performance.now() - start > 1500) {
-              requestAnimationFrame(() => resolve());
-            } else {
-              requestAnimationFrame(tick);
-            }
-          };
-          tick();
-        });
-      });
+      navigate(targetPath, { router, supportsVT });
     };
 
     document.addEventListener("click", onClick, { capture: true });
@@ -96,4 +72,46 @@ export function ViewTransitions() {
   }, [router]);
 
   return null;
+}
+
+type NavigateOpts = {
+  router: ReturnType<typeof useRouter>;
+  supportsVT: boolean;
+};
+
+function navigate(path: string, { router, supportsVT }: NavigateOpts) {
+  const fallback = () => {
+    try {
+      window.location.assign(path);
+    } catch {
+      // worst-case: hard reload
+      window.location.href = path;
+    }
+  };
+
+  if (!supportsVT) {
+    try {
+      router.push(path);
+    } catch {
+      fallback();
+    }
+    return;
+  }
+
+  try {
+    document.startViewTransition!(() => {
+      try {
+        router.push(path);
+      } catch {
+        fallback();
+      }
+    });
+  } catch {
+    // startViewTransition itself threw — try plain push, then native fallback
+    try {
+      router.push(path);
+    } catch {
+      fallback();
+    }
+  }
 }
