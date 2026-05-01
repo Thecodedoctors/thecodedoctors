@@ -1,15 +1,17 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 /**
- * Host-based routing.
+ * Host-based routing (Next.js middleware — kept under the legacy filename
+ * `middleware.ts` for compatibility with the Cloudflare OpenNext adapter,
+ * which doesn't yet recognise Next 16's new `proxy.ts` convention).
  *
  * Public:    thecodedoctors.com           → marketing site at /
  * Client:    app.thecodedoctors.com       → rewrites to /dashboard/...
  * Staff:     admin.thecodedoctors.com     → rewrites to /admin/...
  *
- * Files keep the /dashboard and /admin path structure on disk; this proxy
- * makes the URL bar clean (e.g. app.thecodedoctors.com/requests instead of
- * app.thecodedoctors.com/dashboard/requests).
+ * Files keep the /dashboard and /admin path structure on disk; this
+ * middleware makes the URL bar clean (e.g. `app.thecodedoctors.com/requests`
+ * instead of `app.thecodedoctors.com/dashboard/requests`).
  *
  * Apex visits to /dashboard/* or /admin/* 301 to the right subdomain so
  * any pre-shared link still resolves.
@@ -42,7 +44,7 @@ function isPassThrough(pathname: string): boolean {
   );
 }
 
-export function proxy(request: NextRequest) {
+export function middleware(request: NextRequest) {
   const url = request.nextUrl.clone();
   const rawHost = request.headers.get("host") ?? "";
   const host = rawHost.toLowerCase().split(":")[0];
