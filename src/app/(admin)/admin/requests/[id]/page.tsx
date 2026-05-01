@@ -145,6 +145,22 @@ export default async function AdminRequestDetailPage({
           )}
         </div>
 
+        {r.url && (
+          <div className="mt-6 inline-flex items-center gap-2 rounded-lg border border-border bg-surface/40 px-3 py-2 text-sm">
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted">
+              Site
+            </span>
+            <a
+              href={r.url}
+              target="_blank"
+              rel="noopener noreferrer external"
+              className="font-mono text-foreground underline decoration-border-strong underline-offset-4 hover:decoration-accent"
+            >
+              {r.url}
+            </a>
+          </div>
+        )}
+
         <article className="mt-8 whitespace-pre-wrap rounded-xl border border-border bg-surface/40 p-6 text-base leading-relaxed text-foreground">
           {r.description}
         </article>

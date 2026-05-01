@@ -743,6 +743,8 @@ These are decisions we haven't made yet, parked for when they become urgent:
 
 8. **Do staff get their own audit log** (separate from the practice-wide one) showing only their actions? Useful for self-review but adds a query. Phase 5.
 
+9. **Capture the patient's site URL at sign-up, not on every request.** Founder direction (2026-05-01): URL should be a *required* sign-up field, then offered as a dropdown on the new-request form. For now (Phase 3 v2 interim), the form falls back to a free-text input but pre-fills from `client.website_url` and any URLs the patient has already submitted. Move URL collection into a sign-up onboarding step in Phase 4 (alongside the Stripe plan picker, since a paying customer is the natural moment to capture).
+
 ---
 
 ## Conventions

@@ -2,6 +2,7 @@ import { signOut } from "@/auth";
 import { AppSidebar } from "./app-sidebar";
 import { AppTopBar } from "./app-topbar";
 import { BottomNav } from "./bottom-nav";
+import { NotificationsBell } from "./notifications-bell";
 
 type Variant = "client" | "admin";
 
@@ -40,6 +41,7 @@ export function AppShell({
           variant={variant}
           user={user}
           signOutAction={signOutAction}
+          bell={<NotificationsBell variant={variant} />}
         />
         <main className="flex-1">{children}</main>
         <BottomNav variant={variant} />

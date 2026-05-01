@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { requireUser, isStaff } from "@/lib/auth-helpers";
 import { userBelongsToClient } from "@/lib/clients";
 import { recordAudit } from "@/server/audit";
+import { notifyUsers, membersOfClient } from "@/server/notifications";
 
 type MessageResult = { ok: true } | { ok: false; error: string };
 
@@ -29,7 +30,11 @@ export async function addMessage(
     return { ok: false, error: "Message is too long (max 5000 chars)." };
 
   const reqRows = await db()
-    .select({ clientId: requests.clientId })
+    .select({
+      clientId: requests.clientId,
+      title: requests.title,
+      assignedDoctorId: requests.assignedDoctorId,
+    })
     .from(requests)
     .where(eq(requests.id, requestId))
     .limit(1);
@@ -76,8 +81,41 @@ export async function addMessage(
     targetId: requestId,
   });
 
+  // Notifications. Skip internal notes — staff-only audience already gets
+  // them in the inbox view; an extra in-app notification per internal would
+  // be noisy.
+  if (!internal) {
+    const requestRow = reqRows[0];
+    if (staff) {
+      // Staff replied → notify the patient(s).
+      const recipients = await membersOfClient(requestRow.clientId, {
+        excludeUserId: session.user.id,
+      });
+      await notifyUsers(recipients, {
+        eventKey: "request.message_received",
+        title: `${session.user.name ?? "Your doctor"} replied`,
+        body: `On "${requestRow.title}": ${body.slice(0, 120)}`,
+        href: `/requests/${requestId}`,
+        targetType: "request",
+        targetId: requestId,
+      });
+    } else if (requestRow.assignedDoctorId) {
+      // Patient replied → notify the assigned doctor only (not the whole staff).
+      await notifyUsers([requestRow.assignedDoctorId], {
+        eventKey: "request.message_received",
+        title: "Patient replied",
+        body: `On "${requestRow.title}": ${body.slice(0, 120)}`,
+        href: `/requests/${requestId}`,
+        targetType: "request",
+        targetId: requestId,
+      });
+    }
+  }
+
   revalidatePath(`/admin/requests/${requestId}`);
   revalidatePath(`/dashboard/requests/${requestId}`);
+  revalidatePath("/notifications");
+  revalidatePath("/dashboard"); // hub's "needs your reply" feed
   return { ok: true };
 }
 

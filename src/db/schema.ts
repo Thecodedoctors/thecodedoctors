@@ -202,11 +202,15 @@ export const requests = pgTable(
     }),
     title: text("title").notNull(),
     description: text("description").notNull(),
+    /** The site URL this request is about. Optional today; spec moves URL
+     *  capture to sign-up in Phase 4. See `project_signup_url_capture` memo. */
+    url: text("url"),
     type: requestType("type").notNull().default("improvement"),
     priority: requestPriority("priority").notNull().default("medium"),
     status: requestStatus("status").notNull().default("triaged"),
     eta: timestamp("eta", { mode: "date" }),
     timeSpentMinutes: integer("time_spent_minutes").notNull().default(0),
+    archivedAt: timestamp("archived_at", { mode: "date" }),
     createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
   },
@@ -214,6 +218,7 @@ export const requests = pgTable(
     index("request_client_idx").on(t.clientId),
     index("request_status_idx").on(t.status),
     index("request_assigned_idx").on(t.assignedDoctorId),
+    index("request_archived_idx").on(t.archivedAt),
   ]
 );
 
@@ -308,6 +313,58 @@ export const leads = pgTable(
   ]
 );
 
+/** In-app notification inbox per user. Email/SMS delivery is a separate
+ *  layer driven by `notification_preference`. */
+export const notifications = pgTable(
+  "notification",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** Event key — matches notification_preference.event_key. e.g.
+     *  "request.message_received", "request.status_changed",
+     *  "request.urgent_received" (staff). */
+    eventKey: text("event_key").notNull(),
+    title: text("title").notNull(),
+    body: text("body"),
+    /** Where clicking the notification should take the user. Path-only;
+     *  the proxy resolves it to the right subdomain at click time. */
+    href: text("href"),
+    /** Loose link to a domain object so we can revalidate when it changes. */
+    targetType: text("target_type"),
+    targetId: text("target_id"),
+    readAt: timestamp("read_at", { mode: "date" }),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("notif_user_unread_idx").on(t.userId, t.readAt),
+    index("notif_user_created_idx").on(t.userId, t.createdAt),
+    index("notif_event_idx").on(t.eventKey),
+  ]
+);
+
+/** Per-user preferences for which channel each event uses. Cascades from
+ *  defaults defined in `src/server/notifications.ts`. */
+export const notificationPreferences = pgTable(
+  "notification_preference",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    eventKey: text("event_key").notNull(),
+    inApp: boolean("in_app").notNull().default(true),
+    email: boolean("email").notNull().default(true),
+    sms: boolean("sms").notNull().default(false),
+    /** 'immediate' | 'hourly' | 'daily' | 'off' — kept as text to allow
+     *  future values without migration. */
+    digest: text("digest").notNull().default("immediate"),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.eventKey] })]
+);
+
 /** Diagnostic-tool reports — useful for follow-up emails and trend graphs. */
 export const scans = pgTable(
   "scan",
@@ -397,6 +454,10 @@ export type Lead = typeof leads.$inferSelect;
 export type NewLead = typeof leads.$inferInsert;
 export type Scan = typeof scans.$inferSelect;
 export type NewScan = typeof scans.$inferInsert;
+export type Notification = typeof notifications.$inferSelect;
+export type NewNotification = typeof notifications.$inferInsert;
+export type NotificationPreference = typeof notificationPreferences.$inferSelect;
+export type NewNotificationPreference = typeof notificationPreferences.$inferInsert;
 
 // Suppress unused-import warning for `sql` (kept for future migration helpers).
 void sql;

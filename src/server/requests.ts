@@ -18,6 +18,12 @@ import {
   userBelongsToClient,
 } from "@/lib/clients";
 import { recordAudit } from "@/server/audit";
+import {
+  notifyUsers,
+  membersOfClient,
+  staffUserIds,
+} from "@/server/notifications";
+import { statusLabel } from "@/components/status-pill";
 
 const ALLOWED_TYPES = new Set([
   "bug",
@@ -74,17 +80,12 @@ export async function createRequest(
     email: session.user.email,
   });
 
-  // Stuff URL into the description if provided — keeps the schema simple
-  // until Phase 3 v2 adds a dedicated `url` column.
-  const fullDescription = url
-    ? `${description}\n\n— URL: ${url}`
-    : description;
-
   const row: NewRequest = {
     clientId: client.id,
     submittedByUserId: session.user.id,
     title,
-    description: fullDescription,
+    description,
+    url: url || null,
     type: type as NewRequest["type"],
     priority: priority as NewRequest["priority"],
     status: "triaged",
@@ -99,8 +100,29 @@ export async function createRequest(
     return { ok: false, error: "Couldn't save your request. Try again." };
   }
 
+  // Notify staff about the new request — urgent gets a stronger event key
+  // so we can route those differently in the future.
+  const eventKey =
+    priority === "urgent"
+      ? "request.urgent_submitted"
+      : "request.message_received";
+  const recipients = await staffUserIds({ excludeUserId: session.user.id });
+  await notifyUsers(recipients, {
+    eventKey,
+    title:
+      priority === "urgent"
+        ? `Urgent · ${client.name}`
+        : `New request · ${client.name}`,
+    body: title.slice(0, 140),
+    href: `/requests/${inserted.id}`,
+    targetType: "request",
+    targetId: inserted.id,
+  });
+
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/requests");
+  revalidatePath("/admin");
+  revalidatePath("/notifications");
   // Bare path — proxy.ts on the live site will resolve this to the right
   // file under /dashboard/* via subdomain rewrite.
   redirect(`/requests/${inserted.id}`);
@@ -337,6 +359,8 @@ export async function updateRequestStatus(formData: FormData): Promise<void> {
     .where(eq(requests.id, requestId))
     .limit(1);
   if (before.length === 0) return;
+  const previous = before[0];
+  if (previous.status === status) return; // no-op
 
   await db()
     .update(requests)
@@ -351,13 +375,84 @@ export async function updateRequestStatus(formData: FormData): Promise<void> {
     action: "request.update_status",
     targetType: "request",
     targetId: requestId,
-    before: { status: before[0].status },
+    before: { status: previous.status },
     after: { status },
+  });
+
+  // Notify patient(s) about the status change.
+  const recipients = await membersOfClient(previous.clientId, {
+    excludeUserId: session.user.id,
+  });
+  await notifyUsers(recipients, {
+    eventKey: "request.status_changed",
+    title: `Status changed to ${statusLabel(status)}`,
+    body: `On "${previous.title}"`,
+    href: `/requests/${requestId}`,
+    targetType: "request",
+    targetId: requestId,
   });
 
   revalidatePath(`/admin/requests/${requestId}`);
   revalidatePath("/admin");
   revalidatePath(`/dashboard/requests/${requestId}`);
+  revalidatePath("/dashboard");
+  revalidatePath("/notifications");
+}
+
+/**
+ * Patient approves a deliverable — moves status from in_review to healed.
+ * Spec §4.1 journey 6, §5 capability matrix.
+ */
+export async function approveRequest(formData: FormData): Promise<void> {
+  const session = await requireUser("/dashboard");
+  const requestId = String(formData.get("requestId") ?? "");
+  if (!requestId) return;
+  if (isStaff(session.user.role)) return; // staff don't self-approve
+
+  const before = await db()
+    .select()
+    .from(requests)
+    .where(eq(requests.id, requestId))
+    .limit(1);
+  if (before.length === 0) return;
+  if (before[0].status !== "in_review") return;
+
+  // Authorization: must belong to the request's client.
+  const ok = await userBelongsToClient(session.user.id, before[0].clientId);
+  if (!ok) return;
+
+  await db()
+    .update(requests)
+    .set({ status: "healed", updatedAt: new Date() })
+    .where(eq(requests.id, requestId));
+
+  await recordAudit({
+    actorUserId: session.user.id,
+    action: "request.approved",
+    targetType: "request",
+    targetId: requestId,
+    before: { status: "in_review" },
+    after: { status: "healed" },
+  });
+
+  // Notify the assigned doctor (or all staff if unassigned).
+  const audience = before[0].assignedDoctorId
+    ? [before[0].assignedDoctorId]
+    : await staffUserIds();
+  await notifyUsers(audience, {
+    eventKey: "request.approved",
+    title: "Patient approved · Resolved",
+    body: `On "${before[0].title}"`,
+    href: `/requests/${requestId}`,
+    targetType: "request",
+    targetId: requestId,
+  });
+
+  revalidatePath(`/dashboard/requests/${requestId}`);
+  revalidatePath(`/admin/requests/${requestId}`);
+  revalidatePath("/dashboard");
+  revalidatePath("/admin");
+  revalidatePath("/notifications");
 }
 
 /** Used directly as a form action — no useActionState needed. */
