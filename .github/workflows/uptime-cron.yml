@@ -1,0 +1,53 @@
+name: Uptime cron
+
+# Hits /api/cron/uptime on production every 5 minutes so every client's
+# site gets a uptime check and staff get notified the moment a site
+# flips down. GitHub Actions runs scheduled jobs on a best-effort basis
+# (the schedule slips by a few minutes at peak load, which is fine for
+# uptime monitoring).
+#
+# Secret needed: CRON_SECRET in repo Settings → Secrets and variables →
+# Actions. Same value as Cloudflare's CRON_SECRET worker secret.
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  # Manual trigger from the Actions tab — useful for ad-hoc kicks.
+  workflow_dispatch:
+
+# We don't need source code; just curl. Keeps the run fast and minutes-cheap.
+permissions:
+  contents: read
+
+concurrency:
+  group: uptime-cron
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    name: Hit /api/cron/uptime
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Curl uptime endpoint
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::CRON_SECRET is not set in repo secrets. Configure it under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+          response=$(curl -sS -X POST \
+            -w "\n%{http_code}" \
+            --max-time 90 \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "User-Agent: TheCodeDoctors-Cron/1.0" \
+            https://thecodedoctors.com/api/cron/uptime)
+          body=$(echo "$response" | sed '$d')
+          status=$(echo "$response" | tail -n1)
+          echo "Body: $body"
+          echo "HTTP: $status"
+          if [ "$status" != "200" ]; then
+            echo "::error::Cron endpoint returned HTTP $status"
+            exit 1
+          fi
