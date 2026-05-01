@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Stethoscope, FileText, Folder, Settings, LogOut } from "lucide-react";
+import { Stethoscope, FileText, LogOut } from "lucide-react";
 import { signOut } from "@/auth";
 import { cn } from "@/lib/cn";
 
@@ -10,16 +10,9 @@ type Variant = "client" | "admin";
 const CLIENT_NAV: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: FileText },
   { href: "/dashboard/requests", label: "Requests", icon: FileText },
-  { href: "/dashboard/files", label: "Files", icon: Folder },
-  { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
 
-const ADMIN_NAV: NavItem[] = [
-  { href: "/admin", label: "Inbox", icon: FileText },
-  { href: "/admin/clients", label: "Clients", icon: Folder },
-  { href: "/admin/audit", label: "Audit log", icon: FileText },
-  { href: "/admin/settings", label: "Settings", icon: Settings },
-];
+const ADMIN_NAV: NavItem[] = [{ href: "/admin", label: "Inbox", icon: FileText }];
 
 export function PortalShell({
   variant,
