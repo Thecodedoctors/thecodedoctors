@@ -1,0 +1,6 @@
+Contact: mailto:security@thecodedoctors.com
+Expires: 2027-05-01T00:00:00.000Z
+Preferred-Languages: en
+Canonical: https://thecodedoctors.com/.well-known/security.txt
+Policy: https://thecodedoctors.com/security
+Hiring: https://thecodedoctors.com/about

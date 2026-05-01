@@ -1,0 +1,265 @@
+@import "tailwindcss";
+
+/* Brand tokens — see docs/BRAND.md
+   Dark mode default: deep ink, surgical-teal accent, generous neutrals. */
+
+:root {
+  /* surfaces */
+  --background: #0a0e13;
+  --surface: #11161d;
+  --surface-2: #161c25;
+  --border: #1f2733;
+  --border-strong: #2a3340;
+
+  /* text */
+  --foreground: #f2f4f7;
+  --muted: #9aa4b2;
+  --muted-strong: #c4cad3;
+
+  /* brand */
+  --accent: #3dd9d6;          /* surgical teal */
+  --accent-strong: #58e3e0;
+  --accent-soft: rgba(61, 217, 214, 0.12);
+  --signal: #f0584c;          /* reserved for alerts/security only */
+  --success: #4ade80;
+  --warning: #f59e0b;
+
+  /* radii */
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-strong: var(--muted-strong);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-signal: var(--signal);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+}
+
+/* Reset / base */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--background);
+  color: var(--foreground);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "ss01", "cv11";
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  line-height: 1.55;
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--foreground);
+}
+
+/* Focus ring — accessible and on-brand */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Subtle scrollbar (dark) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+/* Utility: text gradient for the accent emphasis */
+.text-accent-gradient {
+  background: linear-gradient(180deg, #ffffff 0%, #c4cad3 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Card hover — subtle lift + accent glow. iOS-feel. */
+.card-hover {
+  transition:
+    transform 280ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 200ms ease,
+    box-shadow 280ms ease,
+    background-color 200ms ease;
+  will-change: transform;
+}
+.card-hover:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-strong);
+  box-shadow:
+    0 1px 0 0 rgba(255, 255, 255, 0.04) inset,
+    0 12px 32px -16px rgba(61, 217, 214, 0.18);
+}
+
+/* Highlighted card (recommended plan) — gentle pulsing accent halo */
+.card-highlighted {
+  position: relative;
+}
+.card-highlighted::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    140deg,
+    rgba(61, 217, 214, 0.45),
+    rgba(61, 217, 214, 0.05) 50%,
+    rgba(61, 217, 214, 0.35)
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  opacity: 0.85;
+}
+
+/* EKG line draw animation (used in hero) */
+@keyframes ekg-draw {
+  0% {
+    stroke-dashoffset: 1000;
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: -1000;
+    opacity: 1;
+  }
+}
+
+@keyframes ekg-pulse {
+  0%, 100% {
+    filter: drop-shadow(0 0 6px rgba(61, 217, 214, 0.35));
+  }
+  50% {
+    filter: drop-shadow(0 0 14px rgba(61, 217, 214, 0.7));
+  }
+}
+
+.ekg-line {
+  stroke-dasharray: 1000;
+  animation:
+    ekg-draw 6s linear infinite,
+    ekg-pulse 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ekg-line {
+    animation: none;
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+   View Transitions — buttery cross-page navigation (mobile-app feel).
+   Activated by experimental.viewTransition + <ViewTransition> in layout.tsx.
+   Old content fades out with a subtle blur+lift; new content rises in.
+   ──────────────────────────────────────────────────────────────────────── */
+::view-transition-old(root) {
+  animation: 220ms cubic-bezier(0.4, 0, 0.2, 1) both tcd-page-leave;
+}
+
+::view-transition-new(root) {
+  animation: 380ms cubic-bezier(0.16, 1, 0.3, 1) 180ms both tcd-page-enter;
+}
+
+@keyframes tcd-page-leave {
+  to {
+    opacity: 0;
+    transform: translateY(-6px);
+    filter: blur(2px);
+  }
+}
+
+@keyframes tcd-page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+    filter: blur(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+/* Header stays anchored across page navigations — it's the spatial fixed point. */
+::view-transition-group(site-header) {
+  animation: none;
+  z-index: 100;
+}
+::view-transition-old(site-header) {
+  display: none;
+}
+::view-transition-new(site-header) {
+  animation: none;
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+   Scroll-driven section reveals — pure CSS, zero JS.
+   Sections fade up gently as they enter the viewport.
+   Browsers without animation-timeline support just see immediate content.
+   ──────────────────────────────────────────────────────────────────────── */
+@supports (animation-timeline: view()) {
+  .reveal {
+    animation: tcd-reveal both;
+    animation-timeline: view();
+    animation-range: entry 5% cover 25%;
+  }
+}
+
+@keyframes tcd-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Honour reduced motion across every animated layer. */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(*),
+  ::view-transition-new(*),
+  ::view-transition-group(*) {
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
+  }
+  .reveal {
+    animation: none;
+  }
+}
