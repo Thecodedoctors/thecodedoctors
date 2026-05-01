@@ -5,11 +5,12 @@ export function FounderNote() {
     <Section size="sm" className="border-b border-border/60">
       <div className="mx-auto max-w-3xl">
         <p className="font-mono text-xs uppercase tracking-[0.18em] text-accent">
-          A note from the founder
+          About the practice
         </p>
         <h2 className="mt-3 text-3xl font-semibold tracking-tight md:text-4xl">
-          Hi, I&apos;m Precious. I started The Code Doctors because too many
-          good businesses are losing customers to bad websites.
+          We&apos;re Angel Tech Solutions, the practice behind The Code
+          Doctors. We started this because too many good businesses are losing
+          customers to bad websites.
         </h2>
         <div className="mt-7 space-y-5 text-muted leading-relaxed">
           <p>
@@ -19,8 +20,8 @@ export function FounderNote() {
           </p>
           <p>
             We&apos;re a small practice — five doctors, hand-picked. We answer
-            our own messages. We send you reports you can read. And we keep our
-            promises in writing, on our plans page.
+            our own messages. We send you reports you can read. And we keep
+            our promises in writing, on our plans page.
           </p>
           <p className="text-muted-strong">
             If you&apos;d rather just see what&apos;s wrong with your site

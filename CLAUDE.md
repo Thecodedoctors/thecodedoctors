@@ -7,7 +7,7 @@ Cold-outreach business model: outbound emails to businesses → conversion endpo
 ## Current state (as of 2026-05-01)
 - **Phase**: Pre-Phase-1 — persistent context system established, code not yet scaffolded
 - **Working directory**: greenfield (no code yet)
-- **Founder**: Precious (personal contact info must NEVER appear in code, configs, repo files, or commits — use semantic addresses on `thecodedoctors.com`)
+- **Operator**: Angel Tech Solutions (the parent company that owns and runs The Code Doctors). Personal info — name, email, anything tying the brand to an individual — must NEVER appear in code, configs, repo files, or commits. The brand is Angel-Tech-Solutions-as-The-Code-Doctors; never reference an individual.
 - **Team at launch**: 5 doctors
 - **Domain owned**: thecodedoctors.com
 - **Industry positioning**: agnostic at launch (will streamline later once we see who converts)

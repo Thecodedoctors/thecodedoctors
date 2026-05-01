@@ -2,7 +2,7 @@
 
 - **Date**: 2026-05-01
 - **Status**: Accepted
-- **Decided by**: Founder (Precious) + Claude (Code Doctors AI consultant)
+- **Decided by**: Angel Tech Solutions (operator of The Code Doctors) + Claude (AI consultant)
 
 ## Context
 
