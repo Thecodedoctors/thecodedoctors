@@ -18,30 +18,46 @@ export async function sendCheckupReportEmail({
 
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
-    console.log(
-      `[email] (no RESEND_API_KEY) would send report email to ${to} re ${report.finalUrl}`
+    throw new Error(
+      "RESEND_API_KEY not configured on the server. Set it in Cloudflare → Worker → Settings → Variables and Secrets."
     );
-    return;
   }
 
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: `The Code Doctors <${site.emails.general}>`,
-      to,
-      subject,
-      html,
-    }),
-    signal: AbortSignal.timeout(8000),
-  });
+  const fromAddress = process.env.RESEND_FROM ?? site.emails.general;
+
+  let res: Response;
+  try {
+    res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: `The Code Doctors <${fromAddress}>`,
+        to: [to],
+        subject,
+        html,
+      }),
+      signal: AbortSignal.timeout(8000),
+    });
+  } catch (err) {
+    if (err instanceof Error && err.name === "TimeoutError") {
+      throw new Error("Resend timed out (>8s) — try again in a moment.");
+    }
+    throw err instanceof Error ? err : new Error(String(err));
+  }
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`Resend send failed: ${res.status} ${text}`);
+    let detail = text.slice(0, 200);
+    try {
+      const body = JSON.parse(text) as { message?: string; name?: string };
+      if (body.message) detail = body.message;
+    } catch {
+      /* keep raw text */
+    }
+    throw new Error(`Resend ${res.status}: ${detail}`);
   }
 }
 

@@ -252,10 +252,17 @@ function CountUp({ target }: { target: number }) {
   );
 }
 
+type LeadResponse =
+  | { ok: true; message: string; emailDelivered: boolean; emailError?: string }
+  | { error: string; message: string };
+
 function EmailGate({ report }: { report: CheckupReport }) {
   const [email, setEmail] = useState("");
   const [pending, setPending] = useState(false);
-  const [done, setDone] = useState(false);
+  const [result, setResult] = useState<
+    | { kind: "done"; emailDelivered: boolean; emailError?: string }
+    | null
+  >(null);
   const [error, setError] = useState<string | null>(null);
 
   async function submit(e: React.FormEvent) {
@@ -274,14 +281,16 @@ function EmailGate({ report }: { report: CheckupReport }) {
           report,
         }),
       });
-      const data = (await res.json()) as
-        | { ok: true; message: string }
-        | { error: string; message: string };
+      const data = (await res.json()) as LeadResponse;
       if (!res.ok || "error" in data) {
         setError("message" in data ? data.message : "Couldn't send.");
         return;
       }
-      setDone(true);
+      setResult({
+        kind: "done",
+        emailDelivered: data.emailDelivered,
+        emailError: data.emailError,
+      });
     } catch {
       setError("Couldn't reach our service. Try again in a moment.");
     } finally {
@@ -289,40 +298,57 @@ function EmailGate({ report }: { report: CheckupReport }) {
     }
   }
 
-  if (done) {
+  if (result?.kind === "done") {
+    if (result.emailDelivered) {
+      return (
+        <div className="rounded-2xl border border-accent/30 bg-accent-soft p-8">
+          <p className="font-mono text-xs uppercase tracking-[0.18em] text-accent">
+            Sent
+          </p>
+          <p className="mt-3 text-base text-foreground">
+            Your full diagnostic report is on its way to{" "}
+            <span className="font-mono">{email}</span>. Check your inbox in the
+            next minute or two — also peek at spam, since this is our first
+            time emailing you.
+          </p>
+        </div>
+      );
+    }
     return (
-      <div className="rounded-2xl border border-accent/30 bg-accent-soft p-7">
-        <p className="font-mono text-xs uppercase tracking-[0.18em] text-accent">
-          Sent
+      <div className="rounded-2xl border border-warning/30 bg-warning/5 p-8">
+        <p className="font-mono text-xs uppercase tracking-[0.18em] text-warning">
+          Saved · email send delayed
         </p>
-        <p className="mt-2 text-foreground">
-          Your full diagnostic report is on its way to{" "}
-          <span className="font-mono text-foreground">{email}</span>. Check
-          your inbox in the next minute or two.
+        <p className="mt-3 text-base text-foreground">
+          We&apos;ve got your details. The automated report-email didn&apos;t
+          go through this time
+          {result.emailError ? ` (${result.emailError})` : ""}, so a doctor
+          will follow up by hand from <span className="font-mono">hello@thecodedoctors.com</span> within
+          one business day.
         </p>
       </div>
     );
   }
 
   return (
-    <div className="rounded-2xl border border-border-strong bg-surface/60 p-7">
+    <div className="rounded-2xl border border-border-strong bg-surface/60 p-7 md:p-8">
       <div className="grid items-center gap-6 md:grid-cols-12">
-        <div className="md:col-span-7">
+        <div className="md:col-span-6">
           <p className="font-mono text-xs uppercase tracking-[0.18em] text-accent">
             Want the full file?
           </p>
-          <h3 className="mt-2 text-xl font-semibold tracking-tight">
+          <h3 className="mt-2 text-xl font-semibold tracking-tight md:text-2xl">
             Get the full report by email.
           </h3>
-          <p className="mt-2 text-sm text-muted">
+          <p className="mt-3 text-base text-muted">
             Every finding above, with prescriptions and the order to address
             them. Free. No spam.
           </p>
         </div>
-        <form onSubmit={submit} className="md:col-span-5">
-          <div className="rounded-xl border border-border-strong bg-background p-1.5">
+        <form onSubmit={submit} className="md:col-span-6">
+          <div className="rounded-xl border border-border-strong bg-background p-2">
             <div className="flex flex-col gap-2 sm:flex-row">
-              <label className="flex flex-1 items-center gap-3 rounded-lg bg-background px-3 py-2 ring-1 ring-inset ring-border focus-within:ring-accent">
+              <label className="flex flex-1 items-center gap-3 rounded-lg bg-background px-4 py-3 ring-1 ring-inset ring-border focus-within:ring-accent">
                 <Mail className="h-4 w-4 shrink-0 text-accent" />
                 <input
                   type="email"
@@ -331,7 +357,7 @@ function EmailGate({ report }: { report: CheckupReport }) {
                   required
                   placeholder="you@yourcompany.com"
                   aria-label="Email"
-                  className="w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted"
+                  className="w-full min-w-0 bg-transparent text-base text-foreground outline-none placeholder:text-muted"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   disabled={pending}
@@ -339,12 +365,13 @@ function EmailGate({ report }: { report: CheckupReport }) {
               </label>
               <Button
                 type="submit"
-                size="sm"
+                size="md"
                 variant="primary"
                 disabled={pending}
+                className="shrink-0"
               >
                 {pending ? "Sending…" : "Send report"}
-                {!pending && <ArrowRight className="h-3.5 w-3.5" />}
+                {!pending && <ArrowRight className="h-4 w-4" />}
               </Button>
             </div>
           </div>

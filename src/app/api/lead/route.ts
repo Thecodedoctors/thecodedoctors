@@ -83,17 +83,33 @@ export async function POST(request: Request) {
     meta: report ? { overallScore: report.overallScore, overallGrade: report.overallGrade } : undefined,
   });
 
-  // Fire and forget — we don't fail the lead capture if the email send fails.
+  // Wait for the email send so we can tell the visitor whether it actually
+  // delivered. Lead is already persisted, so even if the send fails the
+  // contact info isn't lost — a doctor follows up by hand.
+  let emailDelivered = false;
+  let emailError: string | undefined;
   if (report) {
-    sendCheckupReportEmail({ to: email, report }).catch((err) => {
+    try {
+      await sendCheckupReportEmail({ to: email, report });
+      emailDelivered = true;
+    } catch (err) {
+      emailError =
+        err instanceof Error ? err.message.slice(0, 180) : "send-failed";
       console.error("[lead] failed to send report email", err);
-    });
+    }
+  } else {
+    // No report payload (e.g., book/newsletter form) — nothing to email.
+    emailDelivered = true;
   }
 
   return NextResponse.json(
     {
       ok: true,
-      message: "Sent. Check your inbox in the next minute or two.",
+      message: emailDelivered
+        ? "Sent. Check your inbox in the next minute or two."
+        : "Saved your details — automated email send failed; a doctor will follow up by hand.",
+      emailDelivered,
+      emailError,
     },
     { status: 200 }
   );
