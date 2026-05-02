@@ -16,6 +16,7 @@ import {
 } from "@/server/requests";
 import { latestScanForCurrentUser } from "@/server/activity";
 import { SiteAtAGlance } from "@/components/dashboard/site-at-a-glance";
+import { TrialBanner, computeTrialState } from "@/components/dashboard/trial-banner";
 import {
   StatusPill,
   PriorityPill,
@@ -87,6 +88,9 @@ export default async function HubPage() {
           New request
         </Button>
       </header>
+
+      {/* Trial countdown — only renders when client.trialEndsAt is set. */}
+      <TrialBanner {...computeTrialState(client.trialEndsAt)} plan={client.plan} />
 
       {/* Your site at a glance — top-of-hub, answers the three questions
           (status, plan, last treatment) without making them scroll. */}
