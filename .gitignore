@@ -46,3 +46,11 @@ next-env.d.ts
 
 # local lead store (when DATABASE_URL is not set)
 /data
+
+# OpenNext
+.open-next
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
