@@ -2,10 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Stethoscope, AlertCircle, ArrowRight } from "lucide-react";
-import { auth, signIn } from "@/auth";
-import { finalizePendingSignupBySessionId } from "@/server/onboard-finalize";
-import { db, pendingSignups } from "@/db";
-import { eq } from "drizzle-orm";
+import { auth } from "@/auth";
+import {
+  finalizePendingSignupBySessionId,
+  signInFromWelcome,
+} from "@/server/onboard-finalize";
 import { Button } from "@/components/ui/button";
 
 export const metadata: Metadata = {
@@ -96,17 +97,13 @@ function Success({ email }: { email: string }) {
 
         {/* Sign-in form: pre-fills email, asks for the password they
             just chose during sign-up. After this they're signed in
-            permanently and never see this page again. */}
+            permanently and never see this page again.
+
+            Action is a top-level export (signInFromWelcome) rather
+            than an inline closure — Cloudflare Workers can't always
+            reconstruct the closed-over `email` reliably. */}
         <form
-          action={async (formData) => {
-            "use server";
-            const password = String(formData.get("password") ?? "");
-            await signIn("credentials", {
-              email,
-              password,
-              redirectTo: "/dashboard",
-            });
-          }}
+          action={signInFromWelcome}
           className="mt-6 space-y-3 text-left"
         >
           <input type="hidden" name="email" value={email} />
@@ -191,7 +188,3 @@ function Failure({ message }: { message: string }) {
   );
 }
 
-// Keep `pendingSignups` referenced for future cleanup helpers
-void pendingSignups;
-void db;
-void eq;

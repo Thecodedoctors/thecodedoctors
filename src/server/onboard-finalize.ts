@@ -11,6 +11,7 @@ import { eq } from "drizzle-orm";
 import type Stripe from "stripe";
 import { recordAudit } from "@/server/audit";
 import { getStripe } from "@/lib/stripe";
+import { signIn } from "@/auth";
 
 /**
  * Idempotent: converts a pending_signup row into real user/client/
@@ -221,4 +222,25 @@ async function reuseFromExistingUser(
     .limit(1);
   const clientId = clientRows[0]?.id ?? "";
   return { ok: true, email: userRows[0].email!, userId, clientId };
+}
+
+/**
+ * Top-level server action used by the /welcome sign-in form. Reads
+ * email + password from the formData (both are hidden / typed inputs)
+ * and calls Auth.js signIn with redirectTo=/dashboard.
+ *
+ * Defined as a top-level export rather than an inline closure on the
+ * page component because inline server actions over closed-over
+ * variables can fail with cryptic 5xx errors on Cloudflare Workers
+ * (the action runtime can't always reconstruct the closure).
+ */
+export async function signInFromWelcome(formData: FormData): Promise<void> {
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const password = String(formData.get("password") ?? "");
+  if (!email || password.length < 8) return;
+  await signIn("credentials", {
+    email,
+    password,
+    redirectTo: "/dashboard",
+  });
 }
