@@ -51,7 +51,7 @@ export default async function TrialPage({
           <p className="mt-5 max-w-md text-base text-muted">
             Two weeks of General Care on us. We diagnose what your scan
             flagged, prescribe a treatment plan, and start work the same
-            day. Cancel anytime in those 14 days — no card needed.
+            day. Cancel anytime in those 14 days — no charge.
           </p>
         </div>
 
@@ -92,7 +92,8 @@ export default async function TrialPage({
             Set up your patient file.
           </h2>
           <p className="mt-2 text-sm text-muted">
-            Five fields. No card. We&apos;ll start treatment within the day.
+            Five fields, then we&apos;ll take you to Stripe to add a card.
+            Nothing charged until day 15. Cancel anytime in between.
           </p>
 
           <div className="mt-6">

@@ -114,7 +114,8 @@ export function OnboardForm({
 
 function Submit({ variant }: { variant: Variant }) {
   const { pending } = useFormStatus();
-  const label = variant === "trial" ? "Start free trial" : "Continue";
+  const label =
+    variant === "trial" ? "Continue to Stripe" : "Continue to checkout";
   return (
     <Button
       type="submit"
@@ -123,7 +124,7 @@ function Submit({ variant }: { variant: Variant }) {
       className="w-full"
       disabled={pending}
     >
-      {pending ? "Setting up your account…" : label}
+      {pending ? "Taking you to Stripe…" : label}
       {!pending && <ArrowRight className="h-4 w-4" />}
     </Button>
   );

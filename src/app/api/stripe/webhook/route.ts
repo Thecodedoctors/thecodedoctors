@@ -125,26 +125,32 @@ async function onCheckoutCompleted(s: Stripe.Checkout.Session) {
 }
 
 async function onSubscriptionChange(sub: Stripe.Subscription) {
-  const clientId = sub.metadata?.clientId;
   const subType = sub as unknown as {
-    items: { data: Array<{ price: { id: string; unit_amount: number | null } }> };
+    items: {
+      data: Array<{ price: { id: string; unit_amount: number | null } }>;
+    };
     current_period_end: number;
+    trial_end: number | null;
     cancel_at_period_end: boolean;
   };
   const item = subType.items.data[0];
+
+  let clientId = sub.metadata?.clientId;
   if (!clientId) {
-    // Try to find by subscription id (existing client)
+    // Fall back to lookup by subscription id (already-existing client).
     const existing = await db()
       .select({ id: clients.id })
       .from(clients)
       .where(eq(clients.stripeSubscriptionId, sub.id))
       .limit(1);
     if (existing.length === 0) {
-      console.warn("[stripe-webhook] subscription update with no clientId match", sub.id);
+      console.warn(
+        "[stripe-webhook] subscription update with no clientId match",
+        sub.id
+      );
       return;
     }
-    await applySubscriptionUpdate(existing[0].id, sub, item, subType);
-    return;
+    clientId = existing[0].id;
   }
   await applySubscriptionUpdate(clientId, sub, item, subType);
 }
@@ -153,19 +159,39 @@ async function applySubscriptionUpdate(
   clientId: string,
   sub: Stripe.Subscription,
   item: { price: { id: string; unit_amount: number | null } } | undefined,
-  subType: { current_period_end: number; cancel_at_period_end: boolean }
+  subType: {
+    current_period_end: number;
+    trial_end: number | null;
+    cancel_at_period_end: boolean;
+  }
 ) {
   const periodEnd = new Date(subType.current_period_end * 1000);
   const priceId = item?.price.id ?? null;
   const monthlyCents = item?.price.unit_amount ?? 0;
   const isActive = sub.status === "active" || sub.status === "trialing";
 
+  // Trial state syncs from Stripe — trial_end is null on paid plans.
+  const trialEndsAt = subType.trial_end
+    ? new Date(subType.trial_end * 1000)
+    : null;
+
+  // Map price ID back to our plan label so /admin and the patient hub
+  // show the right tier without us having to maintain a manual mirror.
+  let planUpdate: { plan: "general" | "premium" } | Record<string, never> = {};
+  if (priceId === process.env.STRIPE_PRICE_PREMIUM) {
+    planUpdate = { plan: "premium" };
+  } else if (priceId === process.env.STRIPE_PRICE_GENERAL) {
+    planUpdate = { plan: "general" };
+  }
+
   await db()
     .update(clients)
     .set({
+      ...planUpdate,
       stripeSubscriptionId: sub.id,
       stripePriceId: priceId,
       currentPeriodEnd: periodEnd,
+      trialEndsAt,
       cancelAtPeriodEnd: subType.cancel_at_period_end,
       mrrCents: isActive && !subType.cancel_at_period_end ? monthlyCents : 0,
       status: isActive ? "active" : "lead",
@@ -179,9 +205,10 @@ async function applySubscriptionUpdate(
     targetType: "client",
     targetId: clientId,
     after: {
-      status: sub.status,
+      stripeStatus: sub.status,
       cancelAtPeriodEnd: subType.cancel_at_period_end,
       priceId,
+      trialing: Boolean(trialEndsAt && trialEndsAt.getTime() > Date.now()),
     },
   });
 }
