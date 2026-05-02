@@ -16,7 +16,15 @@ export function getStripe(): Stripe | null {
   }
   // Pin the API version so behavior doesn't drift when Stripe rolls
   // breaking changes server-side. Update intentionally with testing.
-  _stripe = new Stripe(key, { apiVersion: "2026-04-22.dahlia" });
+  //
+  // `httpClient: Stripe.createFetchHttpClient()` is REQUIRED on Cloudflare
+  // Workers — the SDK defaults to Node's `http` module which doesn't
+  // exist on Workers. Without this, every Stripe API call hangs or
+  // throws an opaque error and server actions die silently.
+  _stripe = new Stripe(key, {
+    apiVersion: "2026-04-22.dahlia",
+    httpClient: Stripe.createFetchHttpClient(),
+  });
   return _stripe;
 }
 
