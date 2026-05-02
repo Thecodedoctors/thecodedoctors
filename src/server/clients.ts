@@ -13,6 +13,7 @@ import { eq, sql, and, ilike, desc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { requireStaff, isStaff } from "@/lib/auth-helpers";
 import { recordAudit } from "@/server/audit";
+import { normalizeWebsiteUrl } from "@/lib/url";
 
 export type ClientListRow = {
   id: string;
@@ -309,14 +310,9 @@ export async function updateClient(formData: FormData): Promise<void> {
   if (url === "") {
     updates.websiteUrl = null;
   } else {
-    try {
-      const u = new URL(url);
-      if (u.protocol === "http:" || u.protocol === "https:") {
-        updates.websiteUrl = u.toString();
-      }
-    } catch {
-      /* keep current value */
-    }
+    const normalized = normalizeWebsiteUrl(url);
+    if (normalized) updates.websiteUrl = normalized;
+    // Otherwise keep the current value rather than nuking it on bad input
   }
 
   const notes = String(formData.get("notes") ?? "");

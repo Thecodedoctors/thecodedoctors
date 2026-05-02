@@ -15,6 +15,7 @@ import {
   emailSiteWentDown,
   emailSiteRecovered,
 } from "@/lib/email-templates";
+import { normalizeWebsiteUrl } from "@/lib/url";
 
 const CHECK_TIMEOUT_MS = 10_000;
 const USER_AGENT =
@@ -229,15 +230,9 @@ export async function checkMySiteNow(): Promise<void> {
  */
 export async function setMyClientWebsiteUrl(formData: FormData): Promise<void> {
   const session = await requireUser();
-  const url = String(formData.get("url") ?? "").trim();
+  const raw = String(formData.get("url") ?? "");
+  const url = normalizeWebsiteUrl(raw);
   if (!url) return;
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return;
-  }
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return;
 
   const client = await getOrCreateClientForUser(session.user.id, {
     name: session.user.name,
@@ -246,12 +241,12 @@ export async function setMyClientWebsiteUrl(formData: FormData): Promise<void> {
 
   await db()
     .update(clients)
-    .set({ websiteUrl: parsed.toString(), updatedAt: new Date() })
+    .set({ websiteUrl: url, updatedAt: new Date() })
     .where(eq(clients.id, client.id));
 
   // Run a first check immediately so the dashboard has data.
   try {
-    await recordCheck(client.id, parsed.toString(), client.name);
+    await recordCheck(client.id, url, client.name);
   } catch (err) {
     console.error("[health] initial check after URL set failed", err);
   }

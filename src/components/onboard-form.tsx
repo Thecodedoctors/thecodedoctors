@@ -65,13 +65,13 @@ export function OnboardForm({
 
       <Field icon={Globe}>
         <input
-          type="url"
+          type="text"
           name="websiteUrl"
           required
           inputMode="url"
           autoComplete="url"
           defaultValue={defaultUrl ?? ""}
-          placeholder="https://yourbusiness.com"
+          placeholder="yourbusiness.com"
           className="w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted"
         />
       </Field>

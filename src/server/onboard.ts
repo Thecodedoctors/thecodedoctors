@@ -7,6 +7,7 @@ import { hashPassword } from "@/lib/password";
 import { findUserByReferralCode } from "@/server/referrals";
 import { getStripe, priceIdFor } from "@/lib/stripe";
 import { site } from "@/lib/site";
+import { normalizeWebsiteUrl } from "@/lib/url";
 
 /**
  * Commitment-driven sign-up paths. The /login page does NOT create
@@ -133,8 +134,12 @@ async function validateOnboardForm(
     return { ok: false, error: "That doesn't look like a valid email." };
   if (password.length < 8)
     return { ok: false, error: "Pick a password of 8+ characters." };
-  if (!isValidUrl(websiteUrl))
-    return { ok: false, error: "Enter the URL of the site we'll be treating." };
+  const normalizedUrl = normalizeWebsiteUrl(websiteUrl);
+  if (!normalizedUrl)
+    return {
+      ok: false,
+      error: "Enter the URL of the site we'll be treating (e.g. yoursite.com).",
+    };
   if (businessName.length < 2)
     return { ok: false, error: "What should we call your business?" };
 
@@ -158,7 +163,7 @@ async function validateOnboardForm(
       email,
       password,
       businessName: businessName.slice(0, 200),
-      websiteUrl: normalizeUrl(websiteUrl),
+      websiteUrl: normalizedUrl,
       referredByCode: await resolveReferralCode(ref),
     },
   };
@@ -267,17 +272,4 @@ async function resolveReferralCode(code: string): Promise<string | null> {
 
 function isValidEmail(s: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
-}
-
-function isValidUrl(s: string): boolean {
-  try {
-    const u = new URL(s);
-    return u.protocol === "http:" || u.protocol === "https:";
-  } catch {
-    return false;
-  }
-}
-
-function normalizeUrl(s: string): string {
-  return new URL(s).toString();
 }

@@ -55,12 +55,12 @@ export default async function SiteHealthPage() {
             className="mt-8 flex flex-col gap-2 sm:flex-row"
           >
             <input
-              type="url"
+              type="text"
               name="url"
               required
               inputMode="url"
               autoComplete="url"
-              placeholder="https://yoursite.com"
+              placeholder="yoursite.com"
               className="flex-1 rounded-lg bg-background px-4 py-2.5 text-base text-foreground outline-none ring-1 ring-inset ring-border placeholder:text-muted focus:ring-accent"
             />
             <Button type="submit" variant="primary" size="md">
@@ -201,7 +201,7 @@ export default async function SiteHealthPage() {
           className="flex flex-col gap-2 rounded-2xl border border-border bg-surface/40 p-4 sm:flex-row"
         >
           <input
-            type="url"
+            type="text"
             name="url"
             required
             inputMode="url"

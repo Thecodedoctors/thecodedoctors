@@ -143,12 +143,12 @@ function UrlForm({
         <label className="flex flex-1 items-center gap-3 rounded-xl bg-background px-4 py-3 ring-1 ring-inset ring-border focus-within:ring-accent">
           <Activity className="h-4 w-4 shrink-0 text-accent" />
           <input
-            type="url"
+            type="text"
             name="url"
             inputMode="url"
             autoComplete="url"
             required
-            placeholder="https://yourwebsite.com"
+            placeholder="yourwebsite.com"
             aria-label="Website URL"
             className="w-full bg-transparent font-mono text-sm text-foreground outline-none placeholder:text-muted"
             value={url}

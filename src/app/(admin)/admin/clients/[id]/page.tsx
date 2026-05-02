@@ -241,10 +241,10 @@ export default async function PatientDetailPage({
 
             <Field label="Website URL">
               <input
-                type="url"
+                type="text"
                 name="websiteUrl"
                 defaultValue={c.websiteUrl ?? ""}
-                placeholder="https://example.com"
+                placeholder="example.com"
                 className="w-full rounded-lg bg-background px-3 py-2 text-sm text-foreground outline-none ring-1 ring-inset ring-border focus:ring-signal"
               />
             </Field>

@@ -91,8 +91,8 @@ function UrlField({ knownUrls }: { knownUrls: string[] }) {
       <Field
         label="Site URL"
         name="url"
-        type="url"
-        placeholder="https://yourwebsite.com (or specific page)"
+        type="text"
+        placeholder="yourwebsite.com or specific page"
         helperText={
           knownUrls.length > 0
             ? `Or pick a known URL.`
