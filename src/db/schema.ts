@@ -175,6 +175,16 @@ export const clients = pgTable(
      *  Stored as the literal code (not user_id) so the referrer's code can
      *  be revoked/rotated without breaking attribution. */
     referredByCode: text("referred_by_code"),
+    /** Stripe linkage. Null until the patient first checks out. */
+    stripeCustomerId: text("stripe_customer_id"),
+    stripeSubscriptionId: text("stripe_subscription_id"),
+    stripePriceId: text("stripe_price_id"),
+    /** End of the current billing period; what the dashboard renders as
+     *  "Renews on" or "Access until". */
+    currentPeriodEnd: timestamp("current_period_end", { mode: "date" }),
+    /** Set when the patient cancels — they keep access until
+     *  current_period_end, then it lapses. */
+    cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
     notes: text("notes"),
     createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
