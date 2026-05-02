@@ -71,7 +71,7 @@ export const ADMIN_NAV: NavSection[] = [
   {
     heading: "Practice",
     items: [
-      { href: "/team", label: "Team", icon: Users, soon: true },
+      { href: "/team", label: "Team", icon: Users },
       { href: "/settings", label: "Settings", icon: Settings },
     ],
   },
