@@ -19,10 +19,16 @@ import {
 } from "@/lib/clients";
 import { recordAudit } from "@/server/audit";
 import {
-  notifyUsers,
+  dispatchEvent,
   membersOfClient,
   staffUserIds,
 } from "@/server/notifications";
+import {
+  emailUrgentSubmitted,
+  emailNewRequestForStaff,
+  emailStatusChanged,
+  emailRequestApprovedForStaff,
+} from "@/lib/email-templates";
 import { statusLabel } from "@/components/status-pill";
 
 const ALLOWED_TYPES = new Set([
@@ -102,21 +108,29 @@ export async function createRequest(
 
   // Notify staff about the new request — urgent gets a stronger event key
   // so we can route those differently in the future.
-  const eventKey =
-    priority === "urgent"
-      ? "request.urgent_submitted"
-      : "request.message_received";
+  const isUrgent = priority === "urgent";
   const recipients = await staffUserIds({ excludeUserId: session.user.id });
-  await notifyUsers(recipients, {
-    eventKey,
-    title:
-      priority === "urgent"
-        ? `Urgent · ${client.name}`
-        : `New request · ${client.name}`,
+  await dispatchEvent({
+    recipients,
+    eventKey: isUrgent ? "request.urgent_submitted" : "request.message_received",
+    title: isUrgent
+      ? `Urgent · ${client.name}`
+      : `New request · ${client.name}`,
     body: title.slice(0, 140),
     href: `/requests/${inserted.id}`,
     targetType: "request",
     targetId: inserted.id,
+    email: isUrgent
+      ? emailUrgentSubmitted({
+          clientName: client.name,
+          requestTitle: title,
+          requestId: inserted.id,
+        })
+      : emailNewRequestForStaff({
+          clientName: client.name,
+          requestTitle: title,
+          requestId: inserted.id,
+        }),
   });
 
   revalidatePath("/dashboard");
@@ -383,13 +397,24 @@ export async function updateRequestStatus(formData: FormData): Promise<void> {
   const recipients = await membersOfClient(previous.clientId, {
     excludeUserId: session.user.id,
   });
-  await notifyUsers(recipients, {
+  const newStatusLabel = statusLabel(status);
+  const needsApproval = status === "in_review";
+  await dispatchEvent({
+    recipients,
     eventKey: "request.status_changed",
-    title: `Status changed to ${statusLabel(status)}`,
+    title: needsApproval
+      ? `Awaiting your approval`
+      : `Status changed to ${newStatusLabel}`,
     body: `On "${previous.title}"`,
     href: `/requests/${requestId}`,
     targetType: "request",
     targetId: requestId,
+    email: emailStatusChanged({
+      requestTitle: previous.title,
+      newStatusLabel,
+      requestId,
+      needsApproval,
+    }),
   });
 
   revalidatePath(`/admin/requests/${requestId}`);
@@ -410,15 +435,21 @@ export async function approveRequest(formData: FormData): Promise<void> {
   if (isStaff(session.user.role)) return; // staff don't self-approve
 
   const before = await db()
-    .select()
+    .select({
+      request: requests,
+      clientName: clients.name,
+    })
     .from(requests)
+    .innerJoin(clients, eq(clients.id, requests.clientId))
     .where(eq(requests.id, requestId))
     .limit(1);
   if (before.length === 0) return;
-  if (before[0].status !== "in_review") return;
+  const prev = before[0].request;
+  const clientName = before[0].clientName;
+  if (prev.status !== "in_review") return;
 
   // Authorization: must belong to the request's client.
-  const ok = await userBelongsToClient(session.user.id, before[0].clientId);
+  const ok = await userBelongsToClient(session.user.id, prev.clientId);
   if (!ok) return;
 
   await db()
@@ -436,16 +467,21 @@ export async function approveRequest(formData: FormData): Promise<void> {
   });
 
   // Notify the assigned doctor (or all staff if unassigned).
-  const audience = before[0].assignedDoctorId
-    ? [before[0].assignedDoctorId]
+  const audience = prev.assignedDoctorId
+    ? [prev.assignedDoctorId]
     : await staffUserIds();
-  await notifyUsers(audience, {
+  await dispatchEvent({
+    recipients: audience,
     eventKey: "request.approved",
     title: "Patient approved · Resolved",
-    body: `On "${before[0].title}"`,
+    body: `On "${prev.title}"`,
     href: `/requests/${requestId}`,
     targetType: "request",
     targetId: requestId,
+    email: emailRequestApprovedForStaff({
+      clientName,
+      requestTitle: prev.title,
+    }),
   });
 
   revalidatePath(`/dashboard/requests/${requestId}`);

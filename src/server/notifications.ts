@@ -5,17 +5,22 @@ import {
   notifications,
   clientMembers,
   users,
+  notificationPreferences,
   type NewNotification,
 } from "@/db";
 import { eq, desc, and, isNull, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth-helpers";
+import { sendBrandEmail } from "@/lib/email";
+import type { EmailContent } from "@/lib/email-templates";
 
 /**
  * Notification system per PORTAL-SPEC.md §8.
  *
- * In-app delivery only in this slice. Email channel arrives in a follow-up
- * once we wire Resend templates per event type. SMS waits for Phase 5.
+ * Channels: in-app (always) + email (when the user's preference allows).
+ * SMS waits for Phase 5. Per-user preferences live in
+ * `notification_preference`; if no row exists for an (user, event) pair
+ * the defaults from spec §8.1 are applied.
  */
 
 export type NotifyEvent =
@@ -23,7 +28,9 @@ export type NotifyEvent =
   | "request.status_changed"
   | "request.approved"
   | "request.urgent_submitted"
-  | "request.assigned";
+  | "request.assigned"
+  | "site.went_down"
+  | "site.recovered";
 
 /* ──────────────────────────────────────────────────────────────────────────
    Internal — used by other server modules. No `requireUser`; the caller
@@ -50,6 +57,115 @@ export async function notifyUsers(
     // Notifications are non-essential — never fail the parent action.
     console.error("[notifications] insert failed", err);
   }
+}
+
+/**
+ * Default channel preferences when no `notification_preference` row exists.
+ * Mirrors PORTAL-SPEC.md §8.1.
+ */
+const EMAIL_DEFAULTS: Record<string, boolean> = {
+  "request.message_received": true,
+  "request.status_changed": true,
+  "request.approved": true,
+  "request.urgent_submitted": true,
+  "request.assigned": false,
+  "site.went_down": true,
+  "site.recovered": false, // less urgent — in-app only by default
+};
+
+/**
+ * High-level event dispatcher. Writes one in-app notification per
+ * recipient AND sends a branded email to every recipient whose
+ * preference for this event allows it (or to all by default).
+ *
+ * The email argument is optional; events that should be in-app-only
+ * (or events for which we haven't built a template yet) skip the
+ * email channel entirely.
+ */
+export async function dispatchEvent(args: {
+  recipients: string[];
+  eventKey: NotifyEvent | string;
+  title: string;
+  body?: string | null;
+  href?: string | null;
+  targetType?: string | null;
+  targetId?: string | null;
+  email?: EmailContent;
+}): Promise<void> {
+  if (args.recipients.length === 0) return;
+
+  // 1. In-app — always.
+  await notifyUsers(args.recipients, {
+    eventKey: args.eventKey,
+    title: args.title,
+    body: args.body ?? null,
+    href: args.href ?? null,
+    targetType: args.targetType ?? null,
+    targetId: args.targetId ?? null,
+  });
+
+  // 2. Email — only if a template was provided AND the recipient's
+  //    preference allows. Fire and forget per recipient so a slow
+  //    Resend call for one user doesn't block the rest.
+  if (!args.email) return;
+  if (!process.env.RESEND_API_KEY) return; // dev/no-key environment
+
+  const allowedRecipients = await filterByEmailPreference(
+    args.recipients,
+    args.eventKey
+  );
+
+  await Promise.all(
+    allowedRecipients.map(async ({ email }) => {
+      if (!email) return;
+      try {
+        await sendBrandEmail({
+          to: email,
+          subject: args.email!.subject,
+          html: args.email!.html,
+        });
+      } catch (err) {
+        console.error(
+          "[notifications] email failed for",
+          email,
+          "event",
+          args.eventKey,
+          err
+        );
+      }
+    })
+  );
+}
+
+/**
+ * Returns the subset of recipients who should receive an email for this
+ * event — based on notification_preference rows + EMAIL_DEFAULTS fallback.
+ */
+async function filterByEmailPreference(
+  userIds: string[],
+  eventKey: string
+): Promise<{ userId: string; email: string | null }[]> {
+  if (userIds.length === 0) return [];
+
+  // Pull users + their preference for this specific event in one go.
+  const rows = await db()
+    .select({
+      userId: users.id,
+      email: users.email,
+      prefEmail: notificationPreferences.email,
+    })
+    .from(users)
+    .leftJoin(
+      notificationPreferences,
+      and(
+        eq(notificationPreferences.userId, users.id),
+        eq(notificationPreferences.eventKey, eventKey)
+      )
+    )
+    .where(inArray(users.id, userIds));
+
+  const fallback = EMAIL_DEFAULTS[eventKey] ?? true;
+  return rows.filter((r) => (r.prefEmail ?? fallback) === true);
 }
 
 /**

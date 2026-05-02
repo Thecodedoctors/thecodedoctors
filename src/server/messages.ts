@@ -1,12 +1,23 @@
 "use server";
 
-import { db, messages, requests, users, type NewMessage } from "@/db";
+import {
+  db,
+  messages,
+  requests,
+  users,
+  clients,
+  type NewMessage,
+} from "@/db";
 import { eq, asc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { requireUser, isStaff } from "@/lib/auth-helpers";
 import { userBelongsToClient } from "@/lib/clients";
 import { recordAudit } from "@/server/audit";
-import { notifyUsers, membersOfClient } from "@/server/notifications";
+import { dispatchEvent, membersOfClient } from "@/server/notifications";
+import {
+  emailMessageReceived,
+  emailPatientReplied,
+} from "@/lib/email-templates";
 
 type MessageResult = { ok: true } | { ok: false; error: string };
 
@@ -34,8 +45,10 @@ export async function addMessage(
       clientId: requests.clientId,
       title: requests.title,
       assignedDoctorId: requests.assignedDoctorId,
+      clientName: clients.name,
     })
     .from(requests)
+    .innerJoin(clients, eq(clients.id, requests.clientId))
     .where(eq(requests.id, requestId))
     .limit(1);
   if (reqRows.length === 0)
@@ -86,28 +99,44 @@ export async function addMessage(
   // be noisy.
   if (!internal) {
     const requestRow = reqRows[0];
+    const preview = body.slice(0, 240);
+    const authorName = session.user.name ?? "Your doctor";
     if (staff) {
       // Staff replied → notify the patient(s).
       const recipients = await membersOfClient(requestRow.clientId, {
         excludeUserId: session.user.id,
       });
-      await notifyUsers(recipients, {
+      await dispatchEvent({
+        recipients,
         eventKey: "request.message_received",
-        title: `${session.user.name ?? "Your doctor"} replied`,
+        title: `${authorName} replied`,
         body: `On "${requestRow.title}": ${body.slice(0, 120)}`,
         href: `/requests/${requestId}`,
         targetType: "request",
         targetId: requestId,
+        email: emailMessageReceived({
+          authorName,
+          requestTitle: requestRow.title,
+          preview,
+          requestId,
+        }),
       });
     } else if (requestRow.assignedDoctorId) {
       // Patient replied → notify the assigned doctor only (not the whole staff).
-      await notifyUsers([requestRow.assignedDoctorId], {
+      await dispatchEvent({
+        recipients: [requestRow.assignedDoctorId],
         eventKey: "request.message_received",
         title: "Patient replied",
         body: `On "${requestRow.title}": ${body.slice(0, 120)}`,
         href: `/requests/${requestId}`,
         targetType: "request",
         targetId: requestId,
+        email: emailPatientReplied({
+          clientName: requestRow.clientName,
+          requestTitle: requestRow.title,
+          preview,
+          requestId,
+        }),
       });
     }
   }

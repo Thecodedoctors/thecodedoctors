@@ -10,7 +10,11 @@ import { eq, desc, and, gt, sql, isNotNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { requireUser, requireStaff } from "@/lib/auth-helpers";
 import { getOrCreateClientForUser } from "@/lib/clients";
-import { notifyUsers, staffUserIds } from "@/server/notifications";
+import { dispatchEvent, staffUserIds } from "@/server/notifications";
+import {
+  emailSiteWentDown,
+  emailSiteRecovered,
+} from "@/lib/email-templates";
 
 const CHECK_TIMEOUT_MS = 10_000;
 const USER_AGENT =
@@ -96,25 +100,38 @@ async function recordCheck(clientId: string, url: string, clientName?: string) {
   if (wasOk === result.ok) return result; // no change
 
   const staff = await staffUserIds();
+  const displayName = clientName ?? "client";
   if (!result.ok) {
     // Up → Down
-    await notifyUsers(staff, {
+    await dispatchEvent({
+      recipients: staff,
       eventKey: "site.went_down",
-      title: `Site down · ${clientName ?? "client"}`,
+      title: `Site down · ${displayName}`,
       body: `${url} is unreachable${result.error ? ` (${result.error})` : ""}`,
       href: "/fleet",
       targetType: "client",
       targetId: clientId,
+      email: emailSiteWentDown({
+        clientName: displayName,
+        url,
+        error: result.error,
+      }),
     });
   } else {
     // Down → Up
-    await notifyUsers(staff, {
+    await dispatchEvent({
+      recipients: staff,
       eventKey: "site.recovered",
-      title: `Site back up · ${clientName ?? "client"}`,
+      title: `Site back up · ${displayName}`,
       body: `${url} is responding again (${result.responseTimeMs}ms)`,
       href: "/fleet",
       targetType: "client",
       targetId: clientId,
+      email: emailSiteRecovered({
+        clientName: displayName,
+        url,
+        responseMs: result.responseTimeMs,
+      }),
     });
   }
 

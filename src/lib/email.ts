@@ -1,28 +1,25 @@
 import type { CheckupReport, CheckResult } from "./checkup/types";
 import { site } from "./site";
 
-/**
- * Send the diagnostic report email via Resend when RESEND_API_KEY is set.
- * Otherwise log to console so dev work stays unblocked. PDF generation
- * lands in Phase 2 v2.
- */
-export async function sendCheckupReportEmail({
+/* ──────────────────────────────────────────────────────────────────────────
+   Send via Resend — single shared transport.
+   ──────────────────────────────────────────────────────────────────────── */
+
+export async function sendBrandEmail({
   to,
-  report,
+  subject,
+  html,
 }: {
   to: string;
-  report: CheckupReport;
+  subject: string;
+  html: string;
 }): Promise<void> {
-  const html = renderReportHtml(report);
-  const subject = `Your checkup report — ${new URL(report.finalUrl).hostname}`;
-
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
     throw new Error(
       "RESEND_API_KEY not configured on the server. Set it in Cloudflare → Worker → Settings → Variables and Secrets."
     );
   }
-
   const fromAddress = process.env.RESEND_FROM ?? site.emails.general;
 
   let res: Response;
@@ -36,6 +33,7 @@ export async function sendCheckupReportEmail({
       body: JSON.stringify({
         from: `The Code Doctors <${fromAddress}>`,
         to: [to],
+        reply_to: site.emails.general,
         subject,
         html,
       }),
@@ -59,6 +57,24 @@ export async function sendCheckupReportEmail({
     }
     throw new Error(`Resend ${res.status}: ${detail}`);
   }
+}
+
+/**
+ * Send the diagnostic report email. Wraps `sendBrandEmail` with the
+ * scan-specific HTML template kept in this file.
+ */
+export async function sendCheckupReportEmail({
+  to,
+  report,
+}: {
+  to: string;
+  report: CheckupReport;
+}): Promise<void> {
+  await sendBrandEmail({
+    to,
+    subject: `Your checkup report — ${new URL(report.finalUrl).hostname}`,
+    html: renderReportHtml(report),
+  });
 }
 
 function renderReportHtml(report: CheckupReport): string {
