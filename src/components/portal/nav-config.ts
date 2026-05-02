@@ -65,7 +65,7 @@ export const ADMIN_NAV: NavSection[] = [
     items: [
       { href: "/reports", label: "Reports", icon: BarChart3 },
       { href: "/audit", label: "Audit log", icon: ShieldCheck },
-      { href: "/knowledge", label: "Runbooks", icon: BookOpen, soon: true },
+      { href: "/runbooks", label: "Runbooks", icon: BookOpen },
     ],
   },
   {

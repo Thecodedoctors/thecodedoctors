@@ -1,4 +1,4 @@
-import { H2, P, Strong, Code, Ul, Li, CalloutTip } from "./_prose";
+import { H2, P, Strong, Code, Ul, Li, CalloutTip } from "../_prose";
 
 export const meta = {
   slug: "why-your-site-needs-security-txt",

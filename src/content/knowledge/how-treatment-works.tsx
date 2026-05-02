@@ -1,4 +1,4 @@
-import { H2, P, Strong, Ul, Li, CalloutTip } from "./_prose";
+import { H2, P, Strong, Ul, Li, CalloutTip } from "../_prose";
 
 export const meta = {
   slug: "how-treatment-works",
