@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, ExternalLink, ThumbsUp, MessageCircle } from "lucide-react";
+import { ArrowLeft, ExternalLink, ThumbsUp, MessageCircle, Archive, ArchiveRestore } from "lucide-react";
 import { Section } from "@/components/ui/section";
 import {
   StatusPill,
@@ -12,6 +12,8 @@ import { MessageThread } from "@/components/message-thread";
 import {
   getRequestForCurrentUser,
   approveRequest,
+  archiveRequest,
+  unarchiveRequest,
 } from "@/server/requests";
 import { listMessagesForRequest } from "@/server/messages";
 import { auth } from "@/auth";
@@ -39,6 +41,7 @@ export default async function RequestDetailPage({
   const r = data.request;
   const created = new Date(r.createdAt);
   const awaitingApproval = r.status === "in_review";
+  const isArchived = Boolean(r.archivedAt);
 
   return (
     <Section size="md" reveal={false}>
@@ -94,6 +97,25 @@ export default async function RequestDetailPage({
               {r.url}
             </a>
             <ExternalLink className="h-3 w-3 text-muted" />
+          </div>
+        )}
+
+        {isArchived && (
+          <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border-strong bg-surface/40 px-4 py-3">
+            <p className="inline-flex items-center gap-2 text-sm text-muted">
+              <Archive className="h-4 w-4" />
+              This request is archived. It&apos;s hidden from the default list.
+            </p>
+            <form action={unarchiveRequest}>
+              <input type="hidden" name="requestId" value={r.id} />
+              <button
+                type="submit"
+                className="inline-flex items-center gap-1.5 rounded-md border border-border-strong px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-accent hover:text-accent"
+              >
+                <ArchiveRestore className="h-3.5 w-3.5" />
+                Restore
+              </button>
+            </form>
           </div>
         )}
 
@@ -165,6 +187,21 @@ export default async function RequestDetailPage({
             name: session.user.name,
           }}
         />
+
+        {!isArchived && (
+          <div className="mt-12 flex justify-end border-t border-border pt-6">
+            <form action={archiveRequest}>
+              <input type="hidden" name="requestId" value={r.id} />
+              <button
+                type="submit"
+                className="inline-flex items-center gap-1.5 text-xs text-muted transition-colors hover:text-foreground"
+              >
+                <Archive className="h-3 w-3" />
+                Archive this request
+              </button>
+            </form>
+          </div>
+        )}
       </div>
     </Section>
   );

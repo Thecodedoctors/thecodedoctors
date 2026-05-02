@@ -55,7 +55,7 @@ export const ADMIN_NAV: NavSection[] = [
     heading: "Workflow",
     items: [
       { href: "/", label: "Inbox", icon: Inbox },
-      { href: "/requests", label: "All requests", icon: ListChecks, soon: true },
+      { href: "/requests", label: "All requests", icon: ListChecks },
       { href: "/clients", label: "Patients", icon: Users, soon: true },
       { href: "/fleet", label: "Fleet", icon: Activity },
     ],
@@ -85,5 +85,5 @@ export const MOBILE_BOTTOM_NAV_CLIENT: NavItem[] = [
 
 export const MOBILE_BOTTOM_NAV_ADMIN: NavItem[] = [
   { href: "/", label: "Inbox", icon: Inbox },
-  { href: "/requests", label: "Requests", icon: ListChecks, soon: true },
+  { href: "/requests", label: "Requests", icon: ListChecks },
 ];

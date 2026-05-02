@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, UserPlus } from "lucide-react";
+import { ArrowLeft, UserPlus, Archive, ArchiveRestore } from "lucide-react";
 import { Section } from "@/components/ui/section";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,6 +15,8 @@ import {
   getRequestForCurrentUser,
   updateRequestStatus,
   assignRequestToSelf,
+  archiveRequest,
+  unarchiveRequest,
 } from "@/server/requests";
 import { listMessagesForRequest } from "@/server/messages";
 
@@ -49,6 +51,7 @@ export default async function AdminRequestDetailPage({
   const r = data.request;
   const created = new Date(r.createdAt);
   const isAssignedToMe = r.assignedDoctorId === session.user.id;
+  const isArchived = Boolean(r.archivedAt);
 
   return (
     <Section size="md" reveal={false}>
@@ -143,7 +146,34 @@ export default async function AdminRequestDetailPage({
               </span>
             </p>
           )}
+
+          <form action={isArchived ? unarchiveRequest : archiveRequest}>
+            <input type="hidden" name="requestId" value={r.id} />
+            <button
+              type="submit"
+              className="inline-flex items-center gap-1.5 rounded-md border border-border-strong px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-accent hover:text-accent"
+            >
+              {isArchived ? (
+                <>
+                  <ArchiveRestore className="h-3.5 w-3.5" />
+                  Restore
+                </>
+              ) : (
+                <>
+                  <Archive className="h-3.5 w-3.5" />
+                  Archive
+                </>
+              )}
+            </button>
+          </form>
         </div>
+
+        {isArchived && (
+          <div className="mt-4 inline-flex items-center gap-2 rounded-lg border border-border bg-surface/40 px-3 py-2 text-xs text-muted">
+            <Archive className="h-3.5 w-3.5" />
+            Archived — hidden from the default inbox.
+          </div>
+        )}
 
         {r.url && (
           <div className="mt-6 inline-flex items-center gap-2 rounded-lg border border-border bg-surface/40 px-3 py-2 text-sm">

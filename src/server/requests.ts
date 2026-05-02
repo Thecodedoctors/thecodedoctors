@@ -9,7 +9,7 @@ import {
   type Request as RequestRow,
   type NewRequest,
 } from "@/db";
-import { eq, desc, and, sql, inArray } from "drizzle-orm";
+import { eq, desc, and, sql, inArray, isNull, isNotNull, ilike } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireUser, requireStaff, isStaff } from "@/lib/auth-helpers";
@@ -142,12 +142,21 @@ export async function createRequest(
   redirect(`/requests/${inserted.id}`);
 }
 
-export async function listRequestsForCurrentUser() {
+export async function listRequestsForCurrentUser(opts?: {
+  q?: string;
+  includeArchived?: boolean;
+}) {
   const session = await requireUser();
   const client = await getOrCreateClientForUser(session.user.id, {
     name: session.user.name,
     email: session.user.email,
   });
+
+  const filters = [eq(requests.clientId, client.id)];
+  if (!opts?.includeArchived) filters.push(isNull(requests.archivedAt));
+  const term = opts?.q?.trim();
+  if (term) filters.push(ilike(requests.title, `%${term}%`));
+
   return db()
     .select({
       id: requests.id,
@@ -157,10 +166,28 @@ export async function listRequestsForCurrentUser() {
       status: requests.status,
       createdAt: requests.createdAt,
       updatedAt: requests.updatedAt,
+      archivedAt: requests.archivedAt,
     })
     .from(requests)
-    .where(eq(requests.clientId, client.id))
+    .where(and(...filters))
     .orderBy(desc(requests.updatedAt));
+}
+
+/** Count of archived requests for the current user — used to render a
+ *  "show archived" toggle without an extra round-trip when there are zero. */
+export async function archivedRequestCountForCurrentUser(): Promise<number> {
+  const session = await requireUser();
+  const client = await getOrCreateClientForUser(session.user.id, {
+    name: session.user.name,
+    email: session.user.email,
+  });
+  const rows = await db()
+    .select({ n: sql<number>`count(*)::int` })
+    .from(requests)
+    .where(
+      and(eq(requests.clientId, client.id), isNotNull(requests.archivedAt))
+    );
+  return rows[0]?.n ?? 0;
 }
 
 /**
@@ -311,8 +338,16 @@ export async function getRequestForCurrentUser(requestId: string) {
    Staff-side actions
    ──────────────────────────────────────────────────────────────────────── */
 
-export async function listAllRequestsForStaff() {
+export async function listAllRequestsForStaff(opts?: {
+  q?: string;
+  includeArchived?: boolean;
+}) {
   await requireStaff();
+  const filters = [];
+  if (!opts?.includeArchived) filters.push(isNull(requests.archivedAt));
+  const term = opts?.q?.trim();
+  if (term) filters.push(ilike(requests.title, `%${term}%`));
+
   return db()
     .select({
       id: requests.id,
@@ -322,6 +357,7 @@ export async function listAllRequestsForStaff() {
       status: requests.status,
       createdAt: requests.createdAt,
       updatedAt: requests.updatedAt,
+      archivedAt: requests.archivedAt,
       clientId: requests.clientId,
       clientName: clients.name,
       assignedDoctorName: users.name,
@@ -329,6 +365,7 @@ export async function listAllRequestsForStaff() {
     .from(requests)
     .innerJoin(clients, eq(clients.id, requests.clientId))
     .leftJoin(users, eq(users.id, requests.assignedDoctorId))
+    .where(filters.length > 0 ? and(...filters) : undefined)
     .orderBy(desc(requests.updatedAt));
 }
 
@@ -515,4 +552,80 @@ export async function assignRequestToSelf(formData: FormData): Promise<void> {
 
   revalidatePath(`/admin/requests/${requestId}`);
   revalidatePath("/admin");
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Archive — soft-delete that hides a request from the default list view
+   without losing it. Both staff and the request's own client members can
+   archive/unarchive.
+   ──────────────────────────────────────────────────────────────────────── */
+
+async function canModifyRequest(
+  session: Awaited<ReturnType<typeof requireUser>>,
+  requestId: string
+): Promise<{ ok: true; clientId: string } | { ok: false }> {
+  const rows = await db()
+    .select({ clientId: requests.clientId })
+    .from(requests)
+    .where(eq(requests.id, requestId))
+    .limit(1);
+  if (rows.length === 0) return { ok: false };
+  const { clientId } = rows[0];
+  if (isStaff(session.user.role)) return { ok: true, clientId };
+  const allowed = await userBelongsToClient(session.user.id, clientId);
+  return allowed ? { ok: true, clientId } : { ok: false };
+}
+
+export async function archiveRequest(formData: FormData): Promise<void> {
+  const session = await requireUser();
+  const requestId = String(formData.get("requestId") ?? "");
+  if (!requestId) return;
+
+  const auth = await canModifyRequest(session, requestId);
+  if (!auth.ok) return;
+
+  await db()
+    .update(requests)
+    .set({ archivedAt: new Date(), updatedAt: new Date() })
+    .where(eq(requests.id, requestId));
+
+  await recordAudit({
+    actorUserId: session.user.id,
+    action: "request.archive",
+    targetType: "request",
+    targetId: requestId,
+  });
+
+  revalidatePath(`/dashboard/requests/${requestId}`);
+  revalidatePath(`/admin/requests/${requestId}`);
+  revalidatePath("/dashboard/requests");
+  revalidatePath("/admin/requests");
+  revalidatePath("/dashboard");
+  revalidatePath("/admin");
+}
+
+export async function unarchiveRequest(formData: FormData): Promise<void> {
+  const session = await requireUser();
+  const requestId = String(formData.get("requestId") ?? "");
+  if (!requestId) return;
+
+  const auth = await canModifyRequest(session, requestId);
+  if (!auth.ok) return;
+
+  await db()
+    .update(requests)
+    .set({ archivedAt: null, updatedAt: new Date() })
+    .where(eq(requests.id, requestId));
+
+  await recordAudit({
+    actorUserId: session.user.id,
+    action: "request.unarchive",
+    targetType: "request",
+    targetId: requestId,
+  });
+
+  revalidatePath(`/dashboard/requests/${requestId}`);
+  revalidatePath(`/admin/requests/${requestId}`);
+  revalidatePath("/dashboard/requests");
+  revalidatePath("/admin/requests");
 }

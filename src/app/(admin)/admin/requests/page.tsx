@@ -1,17 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Plus, Archive } from "lucide-react";
+import { Archive } from "lucide-react";
 import { Section } from "@/components/ui/section";
-import { Button } from "@/components/ui/button";
-import {
-  listRequestsForCurrentUser,
-  archivedRequestCountForCurrentUser,
-} from "@/server/requests";
+import { listAllRequestsForStaff } from "@/server/requests";
 import { StatusPill, PriorityPill, TypeLabel } from "@/components/status-pill";
 import { RequestsFilterBar } from "@/components/requests/filter-bar";
+import { db, requests } from "@/db";
+import { isNotNull, sql } from "drizzle-orm";
 
 export const metadata: Metadata = {
-  title: "Requests",
+  title: "All requests · Practice",
   robots: { index: false, follow: false },
 };
 
@@ -20,7 +18,15 @@ type SearchParams = Promise<{
   archived?: string;
 }>;
 
-export default async function RequestsListPage({
+async function archivedCountForStaff(): Promise<number> {
+  const rows = await db()
+    .select({ n: sql<number>`count(*)::int` })
+    .from(requests)
+    .where(isNotNull(requests.archivedAt));
+  return rows[0]?.n ?? 0;
+}
+
+export default async function AdminRequestsListPage({
   searchParams,
 }: {
   searchParams: SearchParams;
@@ -29,33 +35,27 @@ export default async function RequestsListPage({
   const q = (params.q ?? "").trim();
   const includeArchived = params.archived === "1";
 
-  const [requests, archivedCount] = await Promise.all([
-    listRequestsForCurrentUser({ q, includeArchived }),
-    archivedRequestCountForCurrentUser(),
+  const [rows, archivedCount] = await Promise.all([
+    listAllRequestsForStaff({ q, includeArchived }),
+    archivedCountForStaff(),
   ]);
 
   const headline = (() => {
     if (q) return `Search · "${q}"`;
-    if (requests.length === 0) return "No requests yet";
-    if (requests.length === 1) return "1 request";
-    return `${requests.length} requests`;
+    if (rows.length === 0) return "Practice is empty.";
+    if (rows.length === 1) return "1 request";
+    return `${rows.length} requests`;
   })();
 
   return (
     <Section size="md" reveal={false}>
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <p className="font-mono text-xs uppercase tracking-[0.18em] text-accent">
-            Your requests
-          </p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight md:text-4xl">
-            {headline}
-          </h1>
-        </div>
-        <Button href="/requests/new" variant="primary" size="md">
-          <Plus className="h-4 w-4" />
-          New request
-        </Button>
+      <div>
+        <p className="font-mono text-xs uppercase tracking-[0.18em] text-signal">
+          All requests
+        </p>
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight md:text-4xl">
+          {headline}
+        </h1>
       </div>
 
       <RequestsFilterBar
@@ -63,11 +63,11 @@ export default async function RequestsListPage({
         includeArchived={includeArchived}
         archivedCount={archivedCount}
         basePath="/requests"
-        accent="accent"
-        totalShowing={requests.length}
+        accent="signal"
+        totalShowing={rows.length}
       />
 
-      {requests.length === 0 ? (
+      {rows.length === 0 ? (
         <div className="mt-10 rounded-2xl border border-dashed border-border-strong bg-surface/30 p-10 text-center">
           <p className="font-mono text-xs uppercase tracking-[0.18em] text-muted">
             {q ? "No matches" : "Empty"}
@@ -75,19 +75,12 @@ export default async function RequestsListPage({
           <p className="mt-3 text-base text-foreground">
             {q
               ? "Nothing matches that search. Try a different phrase or include archived."
-              : "Submit your first request to begin treatment."}
+              : "When patients submit requests they'll surface here."}
           </p>
-          {!q && (
-            <div className="mt-6">
-              <Button href="/requests/new" variant="primary" size="md">
-                Submit a request
-              </Button>
-            </div>
-          )}
         </div>
       ) : (
         <ul className="mt-4 divide-y divide-border/60 overflow-hidden rounded-2xl border border-border bg-surface/40">
-          {requests.map((r) => {
+          {rows.map((r) => {
             const isArchived = Boolean(r.archivedAt);
             return (
               <li key={r.id}>
@@ -97,7 +90,10 @@ export default async function RequestsListPage({
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-baseline gap-2">
+                      <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted">
+                        {r.clientName}
+                      </p>
+                      <div className="mt-1 flex items-baseline gap-2">
                         {isArchived && (
                           <span
                             className="inline-flex items-center gap-1 rounded-full bg-surface px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-muted ring-1 ring-inset ring-border"
@@ -125,6 +121,17 @@ export default async function RequestsListPage({
                             day: "numeric",
                           })}
                         </span>
+                        {r.assignedDoctorName && (
+                          <>
+                            <span className="text-muted">·</span>
+                            <span className="text-xs text-muted">
+                              Assigned{" "}
+                              <span className="text-foreground">
+                                {r.assignedDoctorName}
+                              </span>
+                            </span>
+                          </>
+                        )}
                       </div>
                     </div>
                     <StatusPill status={r.status} />
