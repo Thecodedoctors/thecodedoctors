@@ -41,13 +41,13 @@ jobs:
       # NEXT_PUBLIC_* values are baked into the bundle so they need to be
       # present here. Runtime secrets (DATABASE_URL, AUTH_SECRET, etc.) live
       # on the Worker as bindings — we don't pass them through the build.
+      #
+      # When Plausible / Turnstile / etc. get wired up, add their keys to
+      # GitHub repo secrets and reference them here.
       - name: Build for Cloudflare Workers
         run: npm run cf:build
         env:
           NEXT_PUBLIC_SITE_URL: https://thecodedoctors.com
-          NEXT_PUBLIC_PLAUSIBLE_DOMAIN: ${{ secrets.NEXT_PUBLIC_PLAUSIBLE_DOMAIN }}
-          NEXT_PUBLIC_PLAUSIBLE_HOST: ${{ secrets.NEXT_PUBLIC_PLAUSIBLE_HOST }}
-          NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${{ secrets.NEXT_PUBLIC_TURNSTILE_SITE_KEY }}
 
       - name: Deploy to Cloudflare
         run: npx wrangler deploy
