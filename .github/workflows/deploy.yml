@@ -1,0 +1,65 @@
+name: Deploy to Cloudflare
+
+# Auto-deploy the Cloudflare Worker on every push to main, plus a manual
+# trigger so we can redeploy without an empty commit. Until this workflow
+# was added, Worker deploys were manual `wrangler deploy` runs from the
+# founder's machine — every push to main now ships within a few minutes.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Don't pile up parallel deploys. New commit cancels any in-flight build.
+concurrency:
+  group: deploy-cloudflare
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Build & deploy Worker
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Build the Next.js app via OpenNext's Cloudflare adapter. Build-time
+      # NEXT_PUBLIC_* values are baked into the bundle so they need to be
+      # present here. Runtime secrets (DATABASE_URL, AUTH_SECRET, etc.) live
+      # on the Worker as bindings — we don't pass them through the build.
+      - name: Build for Cloudflare Workers
+        run: npm run cf:build
+        env:
+          NEXT_PUBLIC_SITE_URL: https://thecodedoctors.com
+          NEXT_PUBLIC_PLAUSIBLE_DOMAIN: ${{ secrets.NEXT_PUBLIC_PLAUSIBLE_DOMAIN }}
+          NEXT_PUBLIC_PLAUSIBLE_HOST: ${{ secrets.NEXT_PUBLIC_PLAUSIBLE_HOST }}
+          NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${{ secrets.NEXT_PUBLIC_TURNSTILE_SITE_KEY }}
+
+      - name: Deploy to Cloudflare
+        run: npx wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Smoke test the deploy
+        run: |
+          set -e
+          for path in / /trial /admin/reports /dashboard/health; do
+            code=$(curl -sk -o /dev/null -w '%{http_code}' --max-time 15 \
+              -L "https://thecodedoctors.com${path}" || echo "000")
+            echo "GET ${path} → ${code}"
+          done

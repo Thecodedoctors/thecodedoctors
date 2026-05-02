@@ -1,0 +1,37 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "thecodedoctors",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-05-02",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // Static assets bundle produced by @opennextjs/cloudflare build.
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+
+  // Self-reference so server actions can fetch back into this Worker
+  // without going through public DNS.
+  "services": [
+    {
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "thecodedoctors"
+    }
+  ],
+
+  // Cloudflare Images binding for image transforms.
+  "images": {
+    "binding": "IMAGES"
+  },
+
+  // Observability — already enabled on the deployed Worker.
+  "observability": {
+    "enabled": true
+  }
+
+  // NOTE: secrets (AUTH_SECRET, CRON_SECRET, DATABASE_URL, RESEND_API_KEY)
+  // and custom domains (thecodedoctors.com / app / admin / www) are
+  // managed on the Cloudflare side and intentionally NOT declared here.
+  // wrangler deploy will not touch them.
+}
