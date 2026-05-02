@@ -1,5 +1,7 @@
-import { db, auditLog } from "@/db";
+import { db, auditLog, users } from "@/db";
 import { headers } from "next/headers";
+import { desc, eq, sql } from "drizzle-orm";
+import { requireStaff } from "@/lib/auth-helpers";
 
 /**
  * Append-only audit logger for staff actions. Wraps any mutation with a
@@ -52,4 +54,64 @@ export async function recordAudit({
   } catch (err) {
     console.error("[audit] write failed", { action, targetType, targetId }, err);
   }
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Read side — staff-only audit log viewer.
+   ──────────────────────────────────────────────────────────────────────── */
+
+export type AuditEntry = {
+  id: string;
+  action: string;
+  targetType: string;
+  targetId: string | null;
+  before: unknown;
+  after: unknown;
+  ip: string | null;
+  ts: Date;
+  actorId: string | null;
+  actorName: string | null;
+  actorEmail: string | null;
+};
+
+const PAGE_SIZE = 50;
+
+export async function listAuditLogForStaff(opts?: {
+  page?: number;
+}): Promise<{ entries: AuditEntry[]; total: number; page: number; totalPages: number }> {
+  await requireStaff();
+  const page = Math.max(1, opts?.page ?? 1);
+  const offset = (page - 1) * PAGE_SIZE;
+
+  const [entries, totals] = await Promise.all([
+    db()
+      .select({
+        id: auditLog.id,
+        action: auditLog.action,
+        targetType: auditLog.targetType,
+        targetId: auditLog.targetId,
+        before: auditLog.before,
+        after: auditLog.after,
+        ip: auditLog.ip,
+        ts: auditLog.ts,
+        actorId: auditLog.actorUserId,
+        actorName: users.name,
+        actorEmail: users.email,
+      })
+      .from(auditLog)
+      .leftJoin(users, eq(users.id, auditLog.actorUserId))
+      .orderBy(desc(auditLog.ts))
+      .limit(PAGE_SIZE)
+      .offset(offset),
+    db()
+      .select({ n: sql<number>`count(*)::int` })
+      .from(auditLog),
+  ]);
+  const total = totals[0]?.n ?? 0;
+  return {
+    entries,
+    total,
+    page,
+    totalPages: Math.max(1, Math.ceil(total / PAGE_SIZE)),
+  };
 }
