@@ -7,7 +7,9 @@ import {
   CreditCard,
   Stethoscope,
   Activity,
+  Pencil,
 } from "lucide-react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { formatRelativeAgo } from "@/lib/time";
 import {
@@ -215,15 +217,24 @@ function SiteHeader({
           {host}
         </h2>
         <p className="mt-2 text-sm text-muted">{status}</p>
-        <a
-          href={url}
-          target="_blank"
-          rel="noopener noreferrer external"
-          className="mt-3 inline-flex items-center gap-1.5 font-mono text-xs text-muted underline decoration-border-strong underline-offset-4 hover:decoration-accent"
-        >
-          {url}
-          <ExternalLink className="h-3 w-3" />
-        </a>
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer external"
+            className="inline-flex items-center gap-1.5 font-mono text-xs text-muted underline decoration-border-strong underline-offset-4 hover:decoration-accent"
+          >
+            {url}
+            <ExternalLink className="h-3 w-3" />
+          </a>
+          <Link
+            href="/health"
+            className="inline-flex items-center gap-1 text-[10px] font-mono uppercase tracking-[0.14em] text-muted hover:text-foreground"
+          >
+            <Pencil className="h-2.5 w-2.5" />
+            Edit
+          </Link>
+        </div>
       </div>
       <span
         className={`grid h-12 w-12 shrink-0 place-items-center rounded-xl ring-1 ring-inset ${ring}`}

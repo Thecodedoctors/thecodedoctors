@@ -259,6 +259,130 @@ export async function setMyClientWebsiteUrl(formData: FormData): Promise<void> {
   revalidatePath("/dashboard");
 }
 
+/**
+ * Last N raw checks for the current user's client. Used in the Site Health
+ * page log table.
+ */
+export async function recentChecksForCurrentUser(
+  limit = 50
+): Promise<
+  {
+    id: string;
+    ok: boolean;
+    statusCode: number | null;
+    responseTimeMs: number | null;
+    error: string | null;
+    checkedAt: Date;
+  }[]
+> {
+  const session = await requireUser();
+  const client = await getOrCreateClientForUser(session.user.id, {
+    name: session.user.name,
+    email: session.user.email,
+  });
+  if (!client.websiteUrl) return [];
+
+  const rows = await db()
+    .select({
+      id: healthChecks.id,
+      ok: healthChecks.ok,
+      statusCode: healthChecks.statusCode,
+      responseTimeMs: healthChecks.responseTimeMs,
+      error: healthChecks.error,
+      checkedAt: healthChecks.checkedAt,
+    })
+    .from(healthChecks)
+    .where(eq(healthChecks.clientId, client.id))
+    .orderBy(desc(healthChecks.checkedAt))
+    .limit(limit);
+
+  return rows.map((r) => ({
+    ...r,
+    checkedAt: new Date(r.checkedAt),
+  }));
+}
+
+/**
+ * Daily-bucketed avg response time (in ms) over a window for the current
+ * user. Used to draw the patient-side Site Health response-time chart.
+ *
+ * Days with zero successful checks come back with `avgMs = 0` so the
+ * series is gap-free for charting.
+ */
+export async function responseTimeSeriesForCurrentUser(
+  days = 7
+): Promise<
+  {
+    day: Date;
+    label: string;
+    avgMs: number;
+    okChecks: number;
+    failedChecks: number;
+  }[]
+> {
+  const session = await requireUser();
+  const client = await getOrCreateClientForUser(session.user.id, {
+    name: session.user.name,
+    email: session.user.email,
+  });
+  if (!client.websiteUrl) return [];
+
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+  const rows = await db()
+    .select({
+      day: sql<Date>`date_trunc('day', ${healthChecks.checkedAt})`,
+      avgMs: sql<number>`coalesce(avg(${healthChecks.responseTimeMs}) filter (where ${healthChecks.ok})::int, 0)`,
+      okChecks: sql<number>`count(*) filter (where ${healthChecks.ok})::int`,
+      failedChecks: sql<number>`count(*) filter (where not ${healthChecks.ok})::int`,
+    })
+    .from(healthChecks)
+    .where(
+      and(
+        eq(healthChecks.clientId, client.id),
+        gt(healthChecks.checkedAt, since)
+      )
+    )
+    .groupBy(sql`date_trunc('day', ${healthChecks.checkedAt})`);
+
+  // Build a contiguous N-day window, fill gaps with zero
+  const map = new Map<number, { avgMs: number; ok: number; failed: number }>();
+  for (const r of rows) {
+    map.set(startOfDayUTC(new Date(r.day)).getTime(), {
+      avgMs: Number(r.avgMs),
+      ok: r.okChecks,
+      failed: r.failedChecks,
+    });
+  }
+  const out: ReturnType<typeof responseTimeSeriesForCurrentUser> extends Promise<
+    infer R
+  >
+    ? R
+    : never = [];
+  const today = startOfDayUTC(new Date());
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(today.getTime() - i * 24 * 60 * 60 * 1000);
+    const found = map.get(d.getTime());
+    out.push({
+      day: d,
+      label: d.toLocaleDateString("en-US", {
+        weekday: "short",
+        timeZone: "UTC",
+      }),
+      avgMs: found?.avgMs ?? 0,
+      okChecks: found?.ok ?? 0,
+      failedChecks: found?.failed ?? 0,
+    });
+  }
+  return out;
+}
+
+function startOfDayUTC(d: Date): Date {
+  return new Date(
+    Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
+  );
+}
+
 /* ──────────────────────────────────────────────────────────────────────────
    Public — staff side
    ──────────────────────────────────────────────────────────────────────── */
