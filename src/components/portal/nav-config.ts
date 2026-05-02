@@ -36,7 +36,7 @@ export const CLIENT_NAV: NavSection[] = [
       { href: "/requests", label: "Requests", icon: ListChecks },
       { href: "/health", label: "Site health", icon: HeartPulse },
       { href: "/billing", label: "Billing", icon: CreditCard, soon: true },
-      { href: "/knowledge", label: "Knowledge", icon: BookOpen, soon: true },
+      { href: "/knowledge", label: "Knowledge", icon: BookOpen },
     ],
   },
   {
