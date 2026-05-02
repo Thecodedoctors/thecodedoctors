@@ -56,7 +56,7 @@ export const ADMIN_NAV: NavSection[] = [
     items: [
       { href: "/", label: "Inbox", icon: Inbox },
       { href: "/requests", label: "All requests", icon: ListChecks },
-      { href: "/clients", label: "Patients", icon: Users, soon: true },
+      { href: "/clients", label: "Patients", icon: Users },
       { href: "/fleet", label: "Fleet", icon: Activity },
     ],
   },

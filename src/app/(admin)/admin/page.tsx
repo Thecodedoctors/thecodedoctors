@@ -19,6 +19,7 @@ import { fleetSummaryForStaff } from "@/server/health";
 import { ActivityFeed } from "@/components/dashboard/activity-feed";
 import { FleetAlertStrip } from "@/components/admin/fleet-alert-strip";
 import { FleetStatusCard } from "@/components/admin/fleet-status-card";
+import { RevenueSection } from "@/components/admin/revenue-section";
 import {
   StatusPill,
   PriorityPill,
@@ -98,6 +99,9 @@ export default async function AdminHomePage({
 
       {/* Fleet alert — only renders when 1+ sites are down */}
       <FleetAlertStrip summary={fleet} />
+
+      {/* Revenue — founder-only (component renders nothing for other roles) */}
+      <RevenueSection />
 
       <ul className="mt-10 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
