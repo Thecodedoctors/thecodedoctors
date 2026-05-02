@@ -81,6 +81,10 @@ const nextConfig: NextConfig = {
     serverActions: {
       bodySizeLimit: "30mb",
     },
+    // Per-icon imports for these packages — without this, the whole
+    // barrel gets pulled in and tree-shaking misses. Critical for the
+    // Cloudflare Worker 3 MB free-tier ceiling.
+    optimizePackageImports: ["lucide-react", "motion"],
   },
   async headers() {
     return [

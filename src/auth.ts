@@ -1,8 +1,7 @@
 import NextAuth, { type DefaultSession } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
-import { DrizzleAdapter } from "@auth/drizzle-adapter";
 import { eq } from "drizzle-orm";
-import { db, schema, isDbConfigured, users } from "@/db";
+import { db, isDbConfigured, users } from "@/db";
 import { verifyPassword } from "@/lib/password";
 
 /**
@@ -43,15 +42,13 @@ const isProd = process.env.NODE_ENV === "production";
  */
 const cookieDomain = isProd ? ".thecodedoctors.com" : undefined;
 
+/**
+ * No `adapter:` is configured — we use JWT session strategy (Credentials
+ * provider requires it), and authorize() reads/writes the user row by
+ * hand. The DrizzleAdapter (~3 MB raw bundle weight) was used only for
+ * its database-session table writes which we no longer need.
+ */
 export const { handlers, signIn, signOut, auth } = NextAuth({
-  adapter: isDbConfigured()
-    ? DrizzleAdapter(db(), {
-        usersTable: schema.users,
-        accountsTable: schema.accounts,
-        sessionsTable: schema.sessions,
-        verificationTokensTable: schema.verificationTokens,
-      })
-    : undefined,
 
   // Credentials requires JWT — database sessions don't work with it.
   session: { strategy: "jwt" },
