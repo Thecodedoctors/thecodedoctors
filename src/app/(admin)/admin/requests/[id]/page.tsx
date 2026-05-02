@@ -10,6 +10,7 @@ import {
   TypeLabel,
 } from "@/components/status-pill";
 import { MessageThread } from "@/components/message-thread";
+import { RequestFiles } from "@/components/request-files";
 import { auth } from "@/auth";
 import {
   getRequestForCurrentUser,
@@ -194,6 +195,11 @@ export default async function AdminRequestDetailPage({
         <article className="mt-8 whitespace-pre-wrap rounded-xl border border-border bg-surface/40 p-6 text-base leading-relaxed text-foreground">
           {r.description}
         </article>
+
+        <RequestFiles
+          requestId={r.id}
+          viewer={{ id: session.user.id, role: session.user.role }}
+        />
 
         <h2 className="mt-12 mb-4 font-mono text-xs uppercase tracking-[0.18em] text-accent">
           Conversation

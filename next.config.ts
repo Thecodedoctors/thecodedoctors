@@ -71,6 +71,12 @@ const nextConfig: NextConfig = {
     // Enables React's <ViewTransition> component for cross-page navigation.
     // See docs/decisions and node_modules/next/dist/docs/01-app/02-guides/view-transitions.md
     viewTransition: true,
+    // File uploads on requests use Server Actions with multipart/form-data.
+    // Default limit is 1MB; we allow 30MB total for the form (max 10MB per
+    // file × 10 files = 100MB but most users send 1-3 small attachments).
+    serverActions: {
+      bodySizeLimit: "30mb",
+    },
   },
   async headers() {
     return [

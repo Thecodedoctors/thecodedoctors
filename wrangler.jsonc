@@ -25,6 +25,15 @@
     "binding": "IMAGES"
   },
 
+  // R2 bucket for patient/staff request attachments. Files are persisted
+  // here and referenced by `file.storage_key` in Postgres.
+  "r2_buckets": [
+    {
+      "binding": "UPLOADS",
+      "bucket_name": "tcd-uploads"
+    }
+  ],
+
   // Observability — already enabled on the deployed Worker.
   "observability": {
     "enabled": true

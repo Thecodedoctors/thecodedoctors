@@ -9,6 +9,7 @@ import {
   TypeLabel,
 } from "@/components/status-pill";
 import { MessageThread } from "@/components/message-thread";
+import { RequestFiles } from "@/components/request-files";
 import {
   getRequestForCurrentUser,
   approveRequest,
@@ -186,6 +187,11 @@ export default async function RequestDetailPage({
             role: session.user.role,
             name: session.user.name,
           }}
+        />
+
+        <RequestFiles
+          requestId={r.id}
+          viewer={{ id: session.user.id, role: session.user.role }}
         />
 
         {!isArchived && (
