@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Mail, ArrowRight, Stethoscope } from "lucide-react";
+import { Mail, Lock, ArrowRight, Stethoscope } from "lucide-react";
 import { signIn, auth } from "@/auth";
 import { Button } from "@/components/ui/button";
 import { isDbConfigured } from "@/db";
@@ -59,7 +59,8 @@ export default async function LoginPage({
             Welcome back.
           </h1>
           <p className="mt-2 text-sm text-muted">
-            We&apos;ll send you a one-time link. No passwords, no sign-up form.
+            Enter your email and password. New here? We&apos;ll set up your
+            account on first sign-in.
           </p>
 
           {!dbReady && (
@@ -77,9 +78,11 @@ export default async function LoginPage({
             action={async (formData) => {
               "use server";
               const email = String(formData.get("email") ?? "").trim();
-              if (!email) return;
-              await signIn("resend", {
+              const password = String(formData.get("password") ?? "");
+              if (!email || password.length < 8) return;
+              await signIn("credentials", {
                 email,
+                password,
                 redirectTo: next,
               });
             }}
@@ -99,13 +102,26 @@ export default async function LoginPage({
                 className="w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted"
               />
             </label>
+            <label className="flex items-center gap-3 rounded-xl bg-background px-4 py-3 ring-1 ring-inset ring-border focus-within:ring-accent">
+              <Lock className="h-4 w-4 shrink-0 text-accent" />
+              <input
+                type="password"
+                name="password"
+                autoComplete="current-password"
+                required
+                minLength={8}
+                placeholder="At least 8 characters"
+                aria-label="Password"
+                className="w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted"
+              />
+            </label>
             <Button
               type="submit"
               size="md"
               variant="primary"
               className="w-full"
             >
-              Send sign-in link
+              Sign in
               <ArrowRight className="h-4 w-4" />
             </Button>
           </form>

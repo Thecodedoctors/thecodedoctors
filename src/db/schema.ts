@@ -90,6 +90,7 @@ export const users = pgTable("user", {
 
   // Code Doctors extensions
   role: userRole("role").notNull().default("client"),
+  passwordHash: text("password_hash"),
   totpSecret: text("totp_secret"), // encrypted at the app layer
   totpEnabled: boolean("totp_enabled").notNull().default(false),
   twoFactorRequired: boolean("two_factor_required").notNull().default(false),
