@@ -12,7 +12,7 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-type SearchParams = Promise<{ email?: string; url?: string }>;
+type SearchParams = Promise<{ email?: string; url?: string; ref?: string }>;
 
 export default async function TrialPage({
   searchParams,
@@ -25,7 +25,7 @@ export default async function TrialPage({
     redirect(session.user.role === "client" ? "/dashboard" : "/admin");
   }
 
-  const { email, url } = await searchParams;
+  const { email, url, ref } = await searchParams;
 
   return (
     <div className="mx-auto grid min-h-screen max-w-6xl gap-12 px-6 py-16 lg:grid-cols-2 lg:py-24">
@@ -100,6 +100,7 @@ export default async function TrialPage({
               variant="trial"
               defaultEmail={email}
               defaultUrl={url}
+              refCode={ref}
             />
           </div>
 

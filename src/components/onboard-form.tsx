@@ -13,12 +13,14 @@ export function OnboardForm({
   plan,
   defaultEmail,
   defaultUrl,
+  refCode,
 }: {
   variant: Variant;
   /** Required when variant === "plan". Ignored for trial (always General). */
   plan?: "general" | "premium";
   defaultEmail?: string;
   defaultUrl?: string;
+  refCode?: string;
 }) {
   const action = variant === "trial" ? startTrial : startWithPlan;
   const [state, formAction] = useActionState<OnboardResult | null, FormData>(
@@ -30,6 +32,9 @@ export function OnboardForm({
     <form action={formAction} className="space-y-3">
       {variant === "plan" && plan && (
         <input type="hidden" name="plan" value={plan} />
+      )}
+      {refCode && (
+        <input type="hidden" name="ref" value={refCode} />
       )}
 
       <Field icon={User}>

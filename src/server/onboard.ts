@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { hashPassword } from "@/lib/password";
 import { signIn } from "@/auth";
 import { recordAudit } from "@/server/audit";
+import { findUserByReferralCode } from "@/server/referrals";
 
 /**
  * Commitment-driven sign-up paths. The /login page does NOT create
@@ -40,6 +41,7 @@ export async function startTrial(
   const password = String(formData.get("password") ?? "");
   const websiteUrl = String(formData.get("websiteUrl") ?? "").trim();
   const businessName = String(formData.get("businessName") ?? "").trim();
+  const ref = String(formData.get("ref") ?? "").trim();
 
   if (name.length < 2)
     return { ok: false, error: "Tell us your name (at least 2 characters)." };
@@ -62,6 +64,7 @@ export async function startTrial(
     status: "active",
     signupSource: "trial",
     trialEndsAt: new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000),
+    referredByCode: await resolveReferralCode(ref),
   });
   if (!created.ok) return created;
 
@@ -82,6 +85,7 @@ export async function startWithPlan(
   const websiteUrl = String(formData.get("websiteUrl") ?? "").trim();
   const businessName = String(formData.get("businessName") ?? "").trim();
   const plan = String(formData.get("plan") ?? "general");
+  const ref = String(formData.get("ref") ?? "").trim();
 
   if (name.length < 2)
     return { ok: false, error: "Tell us your name (at least 2 characters)." };
@@ -106,10 +110,23 @@ export async function startWithPlan(
     status: "active",
     signupSource: "plan",
     trialEndsAt: null,
+    referredByCode: await resolveReferralCode(ref),
   });
   if (!created.ok) return created;
 
   return signInAndRedirect(email, password, "/dashboard");
+}
+
+/** Validate a referral code submitted via /trial or /start. Returns the
+ *  uppercase code if a user owns it, null otherwise. Anything malformed
+ *  becomes null silently — we don't surface "invalid code" errors at
+ *  sign-up because legitimate sign-ups shouldn't be blocked on it. */
+async function resolveReferralCode(code: string): Promise<string | null> {
+  if (!code) return null;
+  const trimmed = code.trim().toUpperCase();
+  if (!/^[A-Z2-9]{7}$/.test(trimmed)) return null;
+  const user = await findUserByReferralCode(trimmed);
+  return user ? trimmed : null;
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -126,6 +143,7 @@ async function createUserAndClient(args: {
   status: "active";
   signupSource: "trial" | "plan";
   trialEndsAt: Date | null;
+  referredByCode: string | null;
 }): Promise<OnboardResult> {
   // Email must be unused
   const existing = await db()
@@ -166,6 +184,7 @@ async function createUserAndClient(args: {
         status: args.status,
         signupSource: args.signupSource,
         trialEndsAt: args.trialEndsAt,
+        referredByCode: args.referredByCode,
       })
       .returning({ id: clients.id });
     clientId = clientRows[0].id;

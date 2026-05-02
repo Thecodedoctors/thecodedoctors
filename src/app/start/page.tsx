@@ -16,6 +16,7 @@ type SearchParams = Promise<{
   plan?: string;
   email?: string;
   url?: string;
+  ref?: string;
 }>;
 
 const PLANS = {
@@ -158,6 +159,7 @@ export default async function StartPage({
               plan={plan}
               defaultEmail={params.email}
               defaultUrl={params.url}
+              refCode={params.ref}
             />
           </div>
 

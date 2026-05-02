@@ -91,6 +91,9 @@ export const users = pgTable("user", {
   // Code Doctors extensions
   role: userRole("role").notNull().default("client"),
   passwordHash: text("password_hash"),
+  /** Short shareable code for /dashboard/referrals. Generated on first
+   *  view. Unique when set (partial unique index in the live DB). */
+  referralCode: text("referral_code"),
   totpSecret: text("totp_secret"), // encrypted at the app layer
   totpEnabled: boolean("totp_enabled").notNull().default(false),
   twoFactorRequired: boolean("two_factor_required").notNull().default(false),
@@ -168,6 +171,10 @@ export const clients = pgTable(
     signupSource: text("signup_source"),
     /** When their free trial expires. Null when on a paid plan or no trial. */
     trialEndsAt: timestamp("trial_ends_at", { mode: "date" }),
+    /** The referralCode of the patient who referred this client, if any.
+     *  Stored as the literal code (not user_id) so the referrer's code can
+     *  be revoked/rotated without breaking attribution. */
+    referredByCode: text("referred_by_code"),
     notes: text("notes"),
     createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
