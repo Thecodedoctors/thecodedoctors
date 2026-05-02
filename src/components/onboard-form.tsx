@@ -101,7 +101,7 @@ export function OnboardForm({
         />
       </Field>
 
-      <Submit variant={variant} />
+      <Submit />
 
       {state && !state.ok && (
         <p className="rounded-lg border border-signal/30 bg-signal/5 px-4 py-3 text-xs text-signal">
@@ -112,10 +112,8 @@ export function OnboardForm({
   );
 }
 
-function Submit({ variant }: { variant: Variant }) {
+function Submit() {
   const { pending } = useFormStatus();
-  const label =
-    variant === "trial" ? "Continue to Stripe" : "Continue to checkout";
   return (
     <Button
       type="submit"
@@ -124,7 +122,7 @@ function Submit({ variant }: { variant: Variant }) {
       className="w-full"
       disabled={pending}
     >
-      {pending ? "Taking you to Stripe…" : label}
+      {pending ? "Setting up…" : "Continue"}
       {!pending && <ArrowRight className="h-4 w-4" />}
     </Button>
   );
