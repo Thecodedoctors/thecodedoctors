@@ -299,22 +299,20 @@ function EmailGate({ report }: { report: CheckupReport }) {
   }
 
   if (result?.kind === "done") {
-    if (result.emailDelivered) {
-      return (
-        <div className="rounded-2xl border border-accent/30 bg-accent-soft p-8">
-          <p className="font-mono text-xs uppercase tracking-[0.18em] text-accent">
-            Sent
-          </p>
-          <p className="mt-3 text-base text-foreground">
-            Your full diagnostic report is on its way to{" "}
-            <span className="font-mono">{email}</span>. Check your inbox in the
-            next minute or two — also peek at spam, since this is our first
-            time emailing you.
-          </p>
-        </div>
-      );
-    }
-    return (
+    const trialHref = `/trial?email=${encodeURIComponent(email)}&url=${encodeURIComponent(report.finalUrl)}`;
+    const headerBlock = result.emailDelivered ? (
+      <div className="rounded-2xl border border-accent/30 bg-accent-soft p-8">
+        <p className="font-mono text-xs uppercase tracking-[0.18em] text-accent">
+          Sent
+        </p>
+        <p className="mt-3 text-base text-foreground">
+          Your full diagnostic report is on its way to{" "}
+          <span className="font-mono">{email}</span>. Check your inbox in the
+          next minute or two — also peek at spam, since this is our first
+          time emailing you.
+        </p>
+      </div>
+    ) : (
       <div className="rounded-2xl border border-warning/30 bg-warning/5 p-8">
         <p className="font-mono text-xs uppercase tracking-[0.18em] text-warning">
           Saved · email send delayed
@@ -326,6 +324,49 @@ function EmailGate({ report }: { report: CheckupReport }) {
           will follow up by hand from <span className="font-mono">hello@thecodedoctors.com</span> within
           one business day.
         </p>
+      </div>
+    );
+
+    return (
+      <div className="space-y-6">
+        {headerBlock}
+
+        {/* Convert path — every commitment-driven sign-up starts here. */}
+        <div className="rounded-2xl border border-border-strong bg-surface/60 p-7 md:p-8">
+          <div className="grid gap-6 md:grid-cols-12 md:items-center">
+            <div className="md:col-span-7">
+              <p className="font-mono text-xs uppercase tracking-[0.18em] text-accent">
+                Want us to fix these?
+              </p>
+              <h3 className="mt-2 text-xl font-semibold tracking-tight md:text-2xl">
+                Start a free 14-day trial — we&apos;ll begin treatment today.
+              </h3>
+              <p className="mt-3 text-base text-muted">
+                We pick the highest-impact findings above and ship the fixes
+                this week. No card. Cancel anytime.
+              </p>
+            </div>
+            <div className="md:col-span-5 flex flex-col gap-2 sm:flex-row md:flex-col md:items-stretch">
+              <Button
+                href={trialHref}
+                size="md"
+                variant="primary"
+                className="w-full"
+              >
+                Start free trial
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+              <Button
+                href="/plans"
+                size="md"
+                variant="secondary"
+                className="w-full"
+              >
+                See plans
+              </Button>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }

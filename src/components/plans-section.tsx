@@ -26,8 +26,8 @@ const plans: Plan[] = [
       "Prioritised prescription",
       "30-min review call with a doctor",
     ],
-    ctaLabel: "Book a Checkup",
-    ctaHref: "/book",
+    ctaLabel: "Run a free Checkup",
+    ctaHref: "/checkup",
   },
   {
     name: "General Care",
@@ -42,7 +42,7 @@ const plans: Plan[] = [
       "Quarterly checkup report",
     ],
     ctaLabel: "Start General Care",
-    ctaHref: "/book?plan=general",
+    ctaHref: "/start?plan=general",
   },
   {
     name: "Premium Care",
@@ -59,7 +59,7 @@ const plans: Plan[] = [
       "Dedicated lead doctor",
     ],
     ctaLabel: "Start Premium Care",
-    ctaHref: "/book?plan=premium",
+    ctaHref: "/start?plan=premium",
     highlighted: true,
   },
 ];

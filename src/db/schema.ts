@@ -163,6 +163,11 @@ export const clients = pgTable(
     leadDoctorId: text("lead_doctor_id").references(() => users.id, {
       onDelete: "set null",
     }),
+    /** Path the patient arrived via: 'trial' (from /checkup) or 'plan' (paid).
+     *  Null on legacy / seeded clients. */
+    signupSource: text("signup_source"),
+    /** When their free trial expires. Null when on a paid plan or no trial. */
+    trialEndsAt: timestamp("trial_ends_at", { mode: "date" }),
     notes: text("notes"),
     createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),

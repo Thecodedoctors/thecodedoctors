@@ -3,7 +3,7 @@ import Credentials from "next-auth/providers/credentials";
 import { DrizzleAdapter } from "@auth/drizzle-adapter";
 import { eq } from "drizzle-orm";
 import { db, schema, isDbConfigured, users } from "@/db";
-import { hashPassword, verifyPassword } from "@/lib/password";
+import { verifyPassword } from "@/lib/password";
 
 /**
  * Auth.js v5 wired to Drizzle.
@@ -69,44 +69,17 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         if (!email || !password || password.length < 8) return null;
         if (!isDbConfigured()) return null;
 
+        // Sign-in only — accounts are created via /trial or /start
+        // (commitment-driven onboarding). Login does NOT auto-create.
         const rows = await db()
           .select()
           .from(users)
           .where(eq(users.email, email))
           .limit(1);
-
-        // First-time sign-in: create the user with the supplied password.
-        // Auto-bootstrap is acceptable while interim — see memory note.
-        if (rows.length === 0) {
-          const hash = await hashPassword(password);
-          const inserted = await db()
-            .insert(users)
-            .values({
-              email,
-              passwordHash: hash,
-              role: "client",
-            })
-            .returning({
-              id: users.id,
-              email: users.email,
-              role: users.role,
-            });
-          const u = inserted[0];
-          return { id: u.id, email: u.email!, role: u.role };
-        }
+        if (rows.length === 0) return null;
 
         const user = rows[0];
-
-        // User exists but has no hash yet (e.g. previously created via the
-        // earlier magic-link flow): set the password on this first attempt.
-        if (!user.passwordHash) {
-          const hash = await hashPassword(password);
-          await db()
-            .update(users)
-            .set({ passwordHash: hash })
-            .where(eq(users.id, user.id));
-          return { id: user.id, email: user.email!, role: user.role };
-        }
+        if (!user.passwordHash) return null;
 
         const ok = await verifyPassword(password, user.passwordHash);
         if (!ok) return null;

@@ -60,8 +60,7 @@ export default async function LoginPage({
             Welcome back.
           </h1>
           <p className="mt-2 text-sm text-muted">
-            Enter your email and password. New here? We&apos;ll set up your
-            account on first sign-in.
+            For existing patients only.
           </p>
 
           {!dbReady && (
@@ -152,8 +151,15 @@ export default async function LoginPage({
             className="text-foreground underline decoration-border-strong underline-offset-4 hover:decoration-accent"
           >
             Run a free checkup
-          </Link>{" "}
-          and we&apos;ll set you up.
+          </Link>
+          , then start a free trial — or{" "}
+          <Link
+            href="/plans"
+            className="text-foreground underline decoration-border-strong underline-offset-4 hover:decoration-accent"
+          >
+            pick a plan
+          </Link>
+          .
         </p>
       </div>
     </div>
