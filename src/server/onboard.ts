@@ -1,46 +1,45 @@
 "use server";
 
-import { db, users, clients, clientMembers } from "@/db";
+import { db, users, pendingSignups } from "@/db";
 import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { hashPassword } from "@/lib/password";
-import { signIn } from "@/auth";
-import { recordAudit } from "@/server/audit";
 import { findUserByReferralCode } from "@/server/referrals";
 import { getStripe, priceIdFor } from "@/lib/stripe";
 import { site } from "@/lib/site";
 
 /**
  * Commitment-driven sign-up paths. The /login page does NOT create
- * accounts — only /trial and /start can.
+ * accounts — only successful Stripe Checkout creates them.
  *
- * Both flows now route through Stripe Checkout:
- *   • /trial → mode=subscription with trial_period_days=14. Card is
- *     collected; first charge fires automatically on day 15. No human
- *     "convert to paid" step needed — Stripe handles it.
- *   • /start → mode=subscription with no trial. Charged immediately.
+ * Both /trial and /start follow the same shape:
+ *   1. Validate the form
+ *   2. Check the email is unused (defense — Stripe Checkout would
+ *      otherwise still complete and we'd discover the conflict on
+ *      finalize, refunding the user is messy)
+ *   3. Hash the password and write a `pending_signup` row containing
+ *      every detail needed to finalize the account, keyed by an
+ *      opaque token. Expires in 24h.
+ *   4. Create a Stripe Checkout Session with the token in
+ *      subscription_data.metadata so finalize can find the row.
+ *      `customer_email` pre-fills the email field on Stripe's page.
+ *   5. redirect() to checkout.stripe.com/...
  *
- * Sequence on submit (both):
- *   1. Validate form
- *   2. Create user + client + client_member with status='lead' (no
- *      Stripe linkage yet, no trial_ends_at yet — Stripe will be the
- *      source of truth via webhook)
- *   3. signIn() — sets the session cookie *before* we leave for Stripe
- *      so when the user redirects back they're already authenticated
- *   4. Create Stripe Customer + Checkout session
- *   5. redirect() to checkout.stripe.com URL
+ * After successful Checkout, the public /welcome page (not auth-gated
+ * because no account exists yet) reads session_id, retrieves the
+ * Checkout session from Stripe, calls finalizePendingSignup, then
+ * signs the new user in. The webhook also calls finalize as a safety
+ * net for the browser-closed case — finalize is idempotent.
  *
- * After successful Checkout, the webhook flips status to 'active' and
- * mirrors the subscription state onto the client row. If the user
- * abandons checkout, they're left as a 'lead' client and can either
- * resume from /dashboard/billing or just let it sit.
+ * Trial: 7 days. /start has no trial (immediate billing).
  */
 
 export type OnboardResult =
   | { ok: true; redirectTo: string }
   | { ok: false; error: string };
 
-const TRIAL_DAYS = 14;
+const TRIAL_DAYS = 7;
+const PENDING_TTL_HOURS = 24;
 const ALLOWED_PAID_PLANS = new Set(["general", "premium"]);
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -51,43 +50,19 @@ export async function startTrial(
   _prev: OnboardResult | null,
   formData: FormData
 ): Promise<OnboardResult> {
-  const name = String(formData.get("name") ?? "").trim();
-  const email = String(formData.get("email") ?? "").trim().toLowerCase();
-  const password = String(formData.get("password") ?? "");
-  const websiteUrl = String(formData.get("websiteUrl") ?? "").trim();
-  const businessName = String(formData.get("businessName") ?? "").trim();
-  const ref = String(formData.get("ref") ?? "").trim();
+  const validation = await validateOnboardForm(formData);
+  if (!validation.ok) return validation;
 
-  if (name.length < 2)
-    return { ok: false, error: "Tell us your name (at least 2 characters)." };
-  if (!isValidEmail(email))
-    return { ok: false, error: "That doesn't look like a valid email." };
-  if (password.length < 8)
-    return { ok: false, error: "Pick a password of 8+ characters." };
-  if (!isValidUrl(websiteUrl))
-    return { ok: false, error: "Enter the URL of the site we'll be treating." };
-  if (businessName.length < 2)
-    return { ok: false, error: "What should we call your business?" };
-
-  const created = await createUserAndClient({
-    name,
-    email,
-    password,
-    businessName: businessName.slice(0, 200),
-    websiteUrl: normalizeUrl(websiteUrl),
+  const token = await stashPendingSignup({
+    ...validation.data,
     plan: "general",
-    status: "lead", // flips to 'active' once Stripe Checkout completes
     signupSource: "trial",
-    // trialEndsAt left null here — webhook syncs it from sub.trial_end
-    trialEndsAt: null,
-    referredByCode: await resolveReferralCode(ref),
   });
-  if (!created.ok) return created;
+  if (!token.ok) return token;
 
-  return signInAndStartCheckout({
-    email,
-    password,
-    clientId: created.clientId,
+  return startCheckout({
+    email: validation.data.email,
+    pendingSignupToken: token.token,
     plan: "general",
     trialPeriodDays: TRIAL_DAYS,
   });
@@ -101,12 +76,55 @@ export async function startWithPlan(
   _prev: OnboardResult | null,
   formData: FormData
 ): Promise<OnboardResult> {
+  const planRaw = String(formData.get("plan") ?? "general");
+  if (!ALLOWED_PAID_PLANS.has(planRaw)) {
+    return { ok: false, error: "Pick General Care or Premium Care." };
+  }
+  const plan = planRaw as "general" | "premium";
+
+  const validation = await validateOnboardForm(formData);
+  if (!validation.ok) return validation;
+
+  const token = await stashPendingSignup({
+    ...validation.data,
+    plan,
+    signupSource: "plan",
+  });
+  if (!token.ok) return token;
+
+  return startCheckout({
+    email: validation.data.email,
+    pendingSignupToken: token.token,
+    plan,
+    // No trial on /start — user explicitly picked a paid plan, billed
+    // immediately.
+  });
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Internals
+   ──────────────────────────────────────────────────────────────────────── */
+
+type ValidatedForm = {
+  ok: true;
+  data: {
+    name: string;
+    email: string;
+    password: string;
+    businessName: string;
+    websiteUrl: string;
+    referredByCode: string | null;
+  };
+};
+
+async function validateOnboardForm(
+  formData: FormData
+): Promise<ValidatedForm | { ok: false; error: string }> {
   const name = String(formData.get("name") ?? "").trim();
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
   const websiteUrl = String(formData.get("websiteUrl") ?? "").trim();
   const businessName = String(formData.get("businessName") ?? "").trim();
-  const plan = String(formData.get("plan") ?? "general");
   const ref = String(formData.get("ref") ?? "").trim();
 
   if (name.length < 2)
@@ -119,70 +137,11 @@ export async function startWithPlan(
     return { ok: false, error: "Enter the URL of the site we'll be treating." };
   if (businessName.length < 2)
     return { ok: false, error: "What should we call your business?" };
-  if (!ALLOWED_PAID_PLANS.has(plan))
-    return { ok: false, error: "Pick General Care or Premium Care." };
 
-  const created = await createUserAndClient({
-    name,
-    email,
-    password,
-    businessName: businessName.slice(0, 200),
-    websiteUrl: normalizeUrl(websiteUrl),
-    plan: plan as "general" | "premium",
-    status: "lead", // flips to 'active' once Stripe Checkout completes
-    signupSource: "plan",
-    trialEndsAt: null,
-    referredByCode: await resolveReferralCode(ref),
-  });
-  if (!created.ok) return created;
-
-  return signInAndStartCheckout({
-    email,
-    password,
-    clientId: created.clientId,
-    plan: plan as "general" | "premium",
-    // No trial on /start — user explicitly picked a paid plan, billed
-    // immediately.
-  });
-}
-
-/** Validate a referral code submitted via /trial or /start. Returns the
- *  uppercase code if a user owns it, null otherwise. Anything malformed
- *  becomes null silently — we don't surface "invalid code" errors at
- *  sign-up because legitimate sign-ups shouldn't be blocked on it. */
-async function resolveReferralCode(code: string): Promise<string | null> {
-  if (!code) return null;
-  const trimmed = code.trim().toUpperCase();
-  if (!/^[A-Z2-9]{7}$/.test(trimmed)) return null;
-  const user = await findUserByReferralCode(trimmed);
-  return user ? trimmed : null;
-}
-
-/* ──────────────────────────────────────────────────────────────────────────
-   Internal — shared user+client creation
-   ──────────────────────────────────────────────────────────────────────── */
-
-type CreateResult =
-  | { ok: true; userId: string; clientId: string }
-  | { ok: false; error: string };
-
-async function createUserAndClient(args: {
-  name: string;
-  email: string;
-  password: string;
-  businessName: string;
-  websiteUrl: string;
-  plan: "general" | "premium";
-  status: "active" | "lead";
-  signupSource: "trial" | "plan";
-  trialEndsAt: Date | null;
-  referredByCode: string | null;
-}): Promise<CreateResult> {
-  // Email must be unused
   const existing = await db()
     .select({ id: users.id })
     .from(users)
-    .where(eq(users.email, args.email))
+    .where(eq(users.email, email))
     .limit(1);
   if (existing.length > 0) {
     return {
@@ -192,157 +151,119 @@ async function createUserAndClient(args: {
     };
   }
 
-  let userId: string;
-  let clientId: string;
-  try {
-    const hash = await hashPassword(args.password);
-    const userRows = await db()
-      .insert(users)
-      .values({
-        name: args.name,
-        email: args.email,
-        passwordHash: hash,
-        role: "client",
-      })
-      .returning({ id: users.id });
-    userId = userRows[0].id;
-
-    const clientRows = await db()
-      .insert(clients)
-      .values({
-        name: args.businessName,
-        websiteUrl: args.websiteUrl,
-        primaryUserId: userId,
-        plan: args.plan,
-        status: args.status,
-        signupSource: args.signupSource,
-        trialEndsAt: args.trialEndsAt,
-        referredByCode: args.referredByCode,
-      })
-      .returning({ id: clients.id });
-    clientId = clientRows[0].id;
-
-    await db().insert(clientMembers).values({
-      clientId,
-      userId,
-      isAdmin: true,
-    });
-  } catch (err) {
-    console.error("[onboard] create failed", err);
-    return {
-      ok: false,
-      error: "Something went wrong setting up your account. Try again.",
-    };
-  }
-
-  // Audit — fire and forget
-  await recordAudit({
-    actorUserId: userId,
-    action:
-      args.signupSource === "trial" ? "client.trial_started" : "client.signed_up",
-    targetType: "client",
-    targetId: clientId,
-    after: {
-      plan: args.plan,
-      signupSource: args.signupSource,
-      trialEndsAt: args.trialEndsAt?.toISOString() ?? null,
+  return {
+    ok: true,
+    data: {
+      name,
+      email,
+      password,
+      businessName: businessName.slice(0, 200),
+      websiteUrl: normalizeUrl(websiteUrl),
+      referredByCode: await resolveReferralCode(ref),
     },
-  });
-
-  return { ok: true, userId, clientId };
+  };
 }
 
-/**
- * Sign the new user in (sets the session cookie via Auth.js) AND create
- * a Stripe Checkout session for them, then redirect to checkout.
- *
- * The cookie is set on this same response, so when Stripe later
- * redirects the browser back to /dashboard/billing the user is already
- * authenticated — no extra "set password again" or magic-link step.
- *
- * Throws NEXT_REDIRECT (via redirect()) on success, which is the
- * intended end-of-form-action behaviour. The browser follows the 303
- * to checkout.stripe.com.
- */
-async function signInAndStartCheckout(args: {
+async function stashPendingSignup(args: {
+  name: string;
   email: string;
   password: string;
-  clientId: string;
+  businessName: string;
+  websiteUrl: string;
   plan: "general" | "premium";
-  /** When set, Stripe holds the card and starts the trial period.
-   *  First charge fires automatically at trial_period_days. */
+  signupSource: "trial" | "plan";
+  referredByCode: string | null;
+}): Promise<{ ok: true; token: string } | { ok: false; error: string }> {
+  try {
+    const passwordHash = await hashPassword(args.password);
+    const token = randomToken();
+    const expiresAt = new Date(
+      Date.now() + PENDING_TTL_HOURS * 60 * 60 * 1000
+    );
+
+    await db().insert(pendingSignups).values({
+      token,
+      email: args.email,
+      passwordHash,
+      userName: args.name,
+      businessName: args.businessName,
+      websiteUrl: args.websiteUrl,
+      plan: args.plan,
+      signupSource: args.signupSource,
+      referredByCode: args.referredByCode,
+      expiresAt,
+    });
+    return { ok: true, token };
+  } catch (err) {
+    console.error("[onboard] stash pending failed", err);
+    return {
+      ok: false,
+      error: "Something went wrong. Try again in a moment.",
+    };
+  }
+}
+
+async function startCheckout(args: {
+  email: string;
+  pendingSignupToken: string;
+  plan: "general" | "premium";
   trialPeriodDays?: number;
 }): Promise<OnboardResult> {
-  // Sign in without redirect so the cookie is set but execution
-  // continues. signIn returns the user; we ignore it.
-  await signIn("credentials", {
-    email: args.email,
-    password: args.password,
-    redirect: false,
-  });
-
   const stripe = getStripe();
   const priceId = priceIdFor(args.plan);
   if (!stripe || !priceId) {
-    // Fall back to dashboard — the user can subscribe from /billing.
-    console.error(
-      "[onboard] Stripe not configured at checkout, falling back to /dashboard"
-    );
-    redirect("/dashboard/billing?checkout=stripe-not-configured");
-  }
-
-  // Create a Stripe customer linked to the client_id so the webhook can
-  // find the right row. Re-use existing customer if the client row
-  // already had one (defensive — shouldn't normally happen at signup).
-  const clientRows = await db()
-    .select({
-      stripeCustomerId: clients.stripeCustomerId,
-      name: clients.name,
-    })
-    .from(clients)
-    .where(eq(clients.id, args.clientId))
-    .limit(1);
-  const clientRow = clientRows[0];
-  let customerId = clientRow?.stripeCustomerId ?? null;
-  if (!customerId) {
-    const customer = await stripe.customers.create({
-      email: args.email,
-      name: clientRow?.name ?? args.email,
-      metadata: { clientId: args.clientId },
-    });
-    customerId = customer.id;
-    await db()
-      .update(clients)
-      .set({ stripeCustomerId: customerId })
-      .where(eq(clients.id, args.clientId));
+    return {
+      ok: false,
+      error: "Sign-ups are temporarily unavailable. Please try again later.",
+    };
   }
 
   const checkout = await stripe.checkout.sessions.create({
     mode: "subscription",
-    customer: customerId,
+    customer_email: args.email,
     line_items: [{ price: priceId, quantity: 1 }],
-    success_url: `${site.url}/dashboard/billing?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${site.url}/dashboard/billing?checkout=canceled`,
+    success_url: `${site.url}/welcome?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${site.url}/trial?canceled=1`,
     allow_promotion_codes: true,
     billing_address_collection: "auto",
     subscription_data: {
-      metadata: { clientId: args.clientId, plan: args.plan },
+      metadata: {
+        pendingSignupToken: args.pendingSignupToken,
+        plan: args.plan,
+      },
       ...(args.trialPeriodDays
         ? { trial_period_days: args.trialPeriodDays }
         : {}),
     },
-    metadata: { clientId: args.clientId, plan: args.plan },
+    metadata: {
+      pendingSignupToken: args.pendingSignupToken,
+      plan: args.plan,
+    },
   });
 
   if (!checkout.url) {
-    redirect("/dashboard/billing?checkout=stripe-error");
+    return {
+      ok: false,
+      error: "Stripe didn't return a checkout URL. Try again.",
+    };
   }
   redirect(checkout.url);
 }
 
-/* ──────────────────────────────────────────────────────────────────────────
-   Validation helpers
-   ──────────────────────────────────────────────────────────────────────── */
+function randomToken(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  let out = "";
+  for (const b of bytes) out += b.toString(16).padStart(2, "0");
+  return out;
+}
+
+async function resolveReferralCode(code: string): Promise<string | null> {
+  if (!code) return null;
+  const trimmed = code.trim().toUpperCase();
+  if (!/^[A-Z2-9]{7}$/.test(trimmed)) return null;
+  const user = await findUserByReferralCode(trimmed);
+  return user ? trimmed : null;
+}
 
 function isValidEmail(s: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);

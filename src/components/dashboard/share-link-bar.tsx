@@ -20,7 +20,7 @@ export function ShareLinkBar({ trialUrl }: { trialUrl: string }) {
     "Try The Code Doctors — they handle the website stuff so I don't"
   );
   const body = encodeURIComponent(
-    `Hey,\n\nI've been using The Code Doctors for monitoring + ongoing fixes on my site. Thought you'd want a free 14-day trial — no card, real doctor on call:\n\n${trialUrl}\n\n— sent from your friend`
+    `Hey,\n\nI've been using The Code Doctors for monitoring + ongoing fixes on my site. Thought you'd want a free 7-day trial — no card, real doctor on call:\n\n${trialUrl}\n\n— sent from your friend`
   );
   const mailto = `mailto:?subject=${subject}&body=${body}`;
 

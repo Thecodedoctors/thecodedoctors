@@ -71,7 +71,7 @@ export function Article() {
       <H2>If they&apos;re on a trial</H2>
 
       <P>
-        The hub shows them a 14-day countdown automatically. You don&apos;t
+        The hub shows them a 7-day countdown automatically. You don&apos;t
         need to remind them — what you DO need to do is{" "}
         <Strong>ship a real fix in the first week</Strong>. Trials
         convert when the patient sees a tangible improvement. Pick the
@@ -79,7 +79,7 @@ export function Article() {
       </P>
 
       <CalloutTip title="The end-of-week check-in">
-        On day 6 of a trial, the assigned doctor posts a recap on the
+        On day 5 of a trial, the assigned doctor posts a recap on the
         intake thread: what we shipped, what we found, what we recommend
         next. This is the conversion moment. Most trials that convert,
         convert in the 36 hours after a strong recap.

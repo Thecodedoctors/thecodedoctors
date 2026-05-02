@@ -20,7 +20,7 @@ import { cn } from "@/lib/cn";
 export const metadata: Metadata = {
   title: "Refer a friend",
   description:
-    "Send a colleague a free trial of The Code Doctors. They get 14 days, you get our gratitude.",
+    "Send a colleague a free trial of The Code Doctors. They get 7 days, you get our gratitude.",
   robots: { index: false, follow: false },
 };
 
@@ -48,7 +48,7 @@ export default async function ReferralsPage() {
             Send a colleague a free trial
           </h1>
           <p className="mt-3 text-sm text-muted leading-relaxed">
-            Anyone you send through your link gets a 14-day trial of
+            Anyone you send through your link gets a 7-day trial of
             General Care. We&apos;ll fix what their last scan flagged
             and ship the first treatment in week one. Your code stays
             yours forever.
@@ -73,7 +73,7 @@ export default async function ReferralsPage() {
             icon={Clock}
             label="On trial"
             value={trialCount}
-            sub="Inside the 14-day window"
+            sub="Inside the 7-day window"
           />
           <Stat
             icon={CheckCircle2}

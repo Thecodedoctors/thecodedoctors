@@ -336,6 +336,38 @@ export const leads = pgTable(
   ]
 );
 
+/** Holding pen for sign-up details between the /trial or /start form
+ *  submission and the Stripe Checkout completion. We don't create
+ *  user/client/client_member rows until payment succeeds — abandoning
+ *  checkout simply leaves the row to expire (24h) without any orphan
+ *  account.
+ *
+ *  finalizePendingSignup() converts the row into real records on
+ *  checkout completion. The webhook calls it as a safety net in case
+ *  the user closes the browser before the /welcome callback runs. */
+export const pendingSignups = pgTable(
+  "pending_signup",
+  {
+    /** Random opaque token, also stored in Stripe metadata as the
+     *  bridge between Checkout and our DB. */
+    token: text("token").primaryKey(),
+    email: text("email").notNull(),
+    passwordHash: text("password_hash").notNull(),
+    userName: text("user_name").notNull(),
+    businessName: text("business_name").notNull(),
+    websiteUrl: text("website_url").notNull(),
+    plan: text("plan").notNull(),
+    signupSource: text("signup_source").notNull(),
+    referredByCode: text("referred_by_code"),
+    expiresAt: timestamp("expires_at", { mode: "date" }).notNull(),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("pending_signup_email_idx").on(t.email),
+    index("pending_signup_expires_idx").on(t.expiresAt),
+  ]
+);
+
 /** In-app notification inbox per user. Email/SMS delivery is a separate
  *  layer driven by `notification_preference`. */
 export const notifications = pgTable(

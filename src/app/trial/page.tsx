@@ -8,7 +8,7 @@ import { OnboardForm } from "@/components/onboard-form";
 export const metadata: Metadata = {
   title: "Start your free trial",
   description:
-    "14 days of General Care, free. We diagnose, prescribe, and treat — you keep your business running.",
+    "7 days of General Care, free. We diagnose, prescribe, and treat — you keep your business running.",
   robots: { index: false, follow: false },
 };
 
@@ -43,7 +43,7 @@ export default async function TrialPage({
 
         <div className="mt-12">
           <p className="font-mono text-xs uppercase tracking-[0.18em] text-accent">
-            14-day free trial
+            7-day free trial
           </p>
           <h1 className="mt-3 text-balance text-4xl font-semibold tracking-tight md:text-5xl">
             Let&apos;s get your site healthy.
@@ -51,7 +51,7 @@ export default async function TrialPage({
           <p className="mt-5 max-w-md text-base text-muted">
             Two weeks of General Care on us. We diagnose what your scan
             flagged, prescribe a treatment plan, and start work the same
-            day. Cancel anytime in those 14 days — no charge.
+            day. Cancel anytime in those 7 days — no charge.
           </p>
         </div>
 
@@ -93,7 +93,7 @@ export default async function TrialPage({
           </h2>
           <p className="mt-2 text-sm text-muted">
             Five fields, then we&apos;ll take you to Stripe to add a card.
-            Nothing charged until day 15. Cancel anytime in between.
+            Nothing charged until day 8. Cancel anytime in between.
           </p>
 
           <div className="mt-6">

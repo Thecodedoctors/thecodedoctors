@@ -8,6 +8,7 @@ import {
   dispatchEvent,
   membersOfClient,
 } from "@/server/notifications";
+import { finalizePendingSignupBySessionId } from "@/server/onboard-finalize";
 
 /**
  * Stripe webhook — single endpoint that handles every subscription /
@@ -81,9 +82,35 @@ export async function POST(req: Request) {
 /* ──────────────────────────────────────────────────────────────────────── */
 
 async function onCheckoutCompleted(s: Stripe.Checkout.Session) {
+  // Path A — pending_signup flow: the signup was deferred until this
+  // event. Finalize creates the user/client/client_member from the
+  // pending row. Idempotent if /welcome already finalized.
+  const pendingToken = s.metadata?.pendingSignupToken;
+  if (pendingToken) {
+    const result = await finalizePendingSignupBySessionId(s.id);
+    if (!result.ok) {
+      console.error("[stripe-webhook] finalize failed", s.id, result.error);
+      return;
+    }
+    const recipients = await membersOfClient(result.clientId);
+    await dispatchEvent({
+      recipients,
+      eventKey: "billing.activated",
+      title: "You're active",
+      body: "Card on file, your trial has started. Your doctor will be in touch shortly.",
+      href: "/billing",
+      targetType: "client",
+      targetId: result.clientId,
+    });
+    return;
+  }
+
+  // Path B — legacy / dashboard-driven conversion. An existing client
+  // (free-trial or otherwise) just attached a card via the patient hub.
+  // metadata.clientId is set by startCheckoutForCurrentUser.
   const clientId = s.metadata?.clientId;
   if (!clientId) {
-    console.warn("[stripe-webhook] checkout completed without clientId", s.id);
+    console.warn("[stripe-webhook] checkout completed with no clientId or token", s.id);
     return;
   }
 
@@ -98,7 +125,6 @@ async function onCheckoutCompleted(s: Stripe.Checkout.Session) {
       stripeCustomerId: customerId ?? undefined,
       stripeSubscriptionId: subscriptionId ?? undefined,
       status: "active",
-      signupSource: "plan",
       updatedAt: new Date(),
     })
     .where(eq(clients.id, clientId));
@@ -111,7 +137,6 @@ async function onCheckoutCompleted(s: Stripe.Checkout.Session) {
     after: { stripeSubscriptionId: subscriptionId, sessionId: s.id },
   });
 
-  // Tell the patient they're active
   const recipients = await membersOfClient(clientId);
   await dispatchEvent({
     recipients,

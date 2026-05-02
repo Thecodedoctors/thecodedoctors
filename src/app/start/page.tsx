@@ -134,7 +134,7 @@ export default async function StartPage({
             href="/trial"
             className="text-foreground underline decoration-border-strong underline-offset-4 hover:decoration-accent"
           >
-            Free 14-day trial
+            Free 7-day trial
           </Link>
           .
         </p>

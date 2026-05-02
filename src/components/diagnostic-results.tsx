@@ -339,7 +339,7 @@ function EmailGate({ report }: { report: CheckupReport }) {
                 Want us to fix these?
               </p>
               <h3 className="mt-2 text-xl font-semibold tracking-tight md:text-2xl">
-                Start a free 14-day trial — we&apos;ll begin treatment today.
+                Start a free 7-day trial — we&apos;ll begin treatment today.
               </h3>
               <p className="mt-3 text-base text-muted">
                 We pick the highest-impact findings above and ship the fixes

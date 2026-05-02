@@ -239,7 +239,7 @@ function PickPlanCards({
                 Free trial · ends {formatRelativeAgo(state.trialEndsAt)}
               </p>
               <p className="mt-1 text-sm text-foreground">
-                You&apos;re on a 14-day trial. Lock in continuous care
+                You&apos;re on a 7-day trial. Lock in continuous care
                 below — no break in service.
               </p>
             </div>
