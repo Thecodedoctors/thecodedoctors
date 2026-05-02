@@ -42,9 +42,9 @@ export const CLIENT_NAV: NavSection[] = [
   {
     heading: "Account",
     items: [
-      { href: "/notifications", label: "Notifications", icon: Bell, soon: true },
+      { href: "/notifications", label: "Notifications", icon: Bell },
       { href: "/referrals", label: "Refer a friend", icon: Sparkles, soon: true },
-      { href: "/settings", label: "Settings", icon: Settings, soon: true },
+      { href: "/settings", label: "Settings", icon: Settings },
       { href: "/help", label: "Help", icon: HelpCircle },
     ],
   },
@@ -72,7 +72,7 @@ export const ADMIN_NAV: NavSection[] = [
     heading: "Practice",
     items: [
       { href: "/team", label: "Team", icon: Users, soon: true },
-      { href: "/settings", label: "Settings", icon: Settings, soon: true },
+      { href: "/settings", label: "Settings", icon: Settings },
     ],
   },
 ];
