@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Mail, Lock, ArrowRight, Stethoscope } from "lucide-react";
+import { AuthError } from "next-auth";
 import { signIn, auth } from "@/auth";
 import { Button } from "@/components/ui/button";
 import { isDbConfigured } from "@/db";
@@ -79,12 +80,23 @@ export default async function LoginPage({
               "use server";
               const email = String(formData.get("email") ?? "").trim();
               const password = String(formData.get("password") ?? "");
-              if (!email || password.length < 8) return;
-              await signIn("credentials", {
-                email,
-                password,
-                redirectTo: next,
-              });
+              const back = (err: string) =>
+                redirect(
+                  `/login?error=${err}&email=${encodeURIComponent(email)}&next=${encodeURIComponent(next)}`
+                );
+              if (!email) back("MissingEmail");
+              if (password.length < 8) back("ShortPassword");
+              try {
+                await signIn("credentials", {
+                  email,
+                  password,
+                  redirectTo: next,
+                });
+              } catch (err) {
+                // Auth.js uses NEXT_REDIRECT on success; let that propagate.
+                if (err instanceof AuthError) back("Credentials");
+                throw err;
+              }
             }}
             className="mt-6 space-y-3"
           >
@@ -127,15 +139,8 @@ export default async function LoginPage({
           </form>
 
           {params.error && (
-            <p className="mt-4 text-xs text-signal">
-              We couldn&apos;t sign you in. Try again or reach out to{" "}
-              <a
-                href="mailto:hello@thecodedoctors.com"
-                className="underline decoration-border-strong underline-offset-4 hover:decoration-accent"
-              >
-                hello@thecodedoctors.com
-              </a>
-              .
+            <p className="mt-4 rounded-lg border border-signal/30 bg-signal/5 px-4 py-3 text-xs text-signal">
+              {errorCopy(params.error)}
             </p>
           )}
         </div>
@@ -153,4 +158,18 @@ export default async function LoginPage({
       </div>
     </div>
   );
+}
+
+function errorCopy(code: string): string {
+  switch (code) {
+    case "Credentials":
+    case "CredentialsSignin":
+      return "Email or password is incorrect. Try again.";
+    case "MissingEmail":
+      return "Enter your email.";
+    case "ShortPassword":
+      return "Password must be at least 8 characters.";
+    default:
+      return "We couldn't sign you in. Try again, or reach out to hello@thecodedoctors.com.";
+  }
 }
