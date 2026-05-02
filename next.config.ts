@@ -67,6 +67,10 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   reactStrictMode: true,
+  // Don't ship source maps in the production server bundle. OpenNext
+  // would otherwise inline them into the Cloudflare Worker, eating a
+  // big chunk of the 3 MB / 10 MB script-size budget.
+  productionBrowserSourceMaps: false,
   experimental: {
     // Enables React's <ViewTransition> component for cross-page navigation.
     // See docs/decisions and node_modules/next/dist/docs/01-app/02-guides/view-transitions.md

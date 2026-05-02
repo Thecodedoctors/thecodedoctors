@@ -80,7 +80,7 @@ export async function GET(
       ? `inline; filename="${encodeURIComponent(file.filename)}"`
       : `attachment; filename="${encodeURIComponent(file.filename)}"`;
 
-  return new NextResponse(obj.body as ReadableStream, {
+  return new NextResponse(obj.body as unknown as BodyInit, {
     status: 200,
     headers: {
       "Content-Type": file.contentType,
