@@ -298,6 +298,55 @@ export async function fleetForStaff(): Promise<FleetRow[]> {
   return result;
 }
 
+export type FleetSummary = {
+  down: number;
+  healthy: number;
+  unchecked: number;
+  total: number;
+  downSites: {
+    clientId: string;
+    clientName: string;
+    websiteUrl: string;
+    error: string | null;
+    since: Date;
+  }[];
+};
+
+/**
+ * Aggregate fleet status for the staff home page. Down sites come back
+ * with the timestamp + error of the last check so the alert strip can
+ * show "down for 12m · Connection refused".
+ */
+export async function fleetSummaryForStaff(): Promise<FleetSummary> {
+  const fleet = await fleetForStaff();
+  const summary: FleetSummary = {
+    down: 0,
+    healthy: 0,
+    unchecked: 0,
+    total: fleet.length,
+    downSites: [],
+  };
+  for (const row of fleet) {
+    if (!row.latest) {
+      summary.unchecked += 1;
+      continue;
+    }
+    if (row.latest.ok) {
+      summary.healthy += 1;
+    } else {
+      summary.down += 1;
+      summary.downSites.push({
+        clientId: row.clientId,
+        clientName: row.clientName,
+        websiteUrl: row.websiteUrl,
+        error: row.latest.error,
+        since: row.latest.checkedAt,
+      });
+    }
+  }
+  return summary;
+}
+
 /**
  * Run uptime checks against every client with a configured site URL.
  * Called by the cron endpoint and the staff "Run all checks now" button.

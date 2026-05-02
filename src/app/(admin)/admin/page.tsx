@@ -15,7 +15,10 @@ import {
   activityForStaff,
   clientPortfolioForStaff,
 } from "@/server/activity";
+import { fleetSummaryForStaff } from "@/server/health";
 import { ActivityFeed } from "@/components/dashboard/activity-feed";
+import { FleetAlertStrip } from "@/components/admin/fleet-alert-strip";
+import { FleetStatusCard } from "@/components/admin/fleet-status-card";
 import {
   StatusPill,
   PriorityPill,
@@ -51,11 +54,12 @@ export default async function AdminHomePage({
 
   const firstName = session.user.name?.split(" ")[0] ?? "Doctor";
 
-  const [requests, stats, activity, portfolio] = await Promise.all([
+  const [requests, stats, activity, portfolio, fleet] = await Promise.all([
     listAllRequestsForStaff(),
     staffStats(),
     activityForStaff(10),
     clientPortfolioForStaff(5),
+    fleetSummaryForStaff(),
   ]);
 
   const open = requests.filter(
@@ -92,6 +96,9 @@ export default async function AdminHomePage({
         </div>
       </div>
 
+      {/* Fleet alert — only renders when 1+ sites are down */}
+      <FleetAlertStrip summary={fleet} />
+
       <ul className="mt-10 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Open"
@@ -112,10 +119,10 @@ export default async function AdminHomePage({
           tone="muted"
         />
         <StatCard
-          label="Total in queue"
-          value={requests.length}
+          label="Sites down"
+          value={fleet.down}
           icon={Activity}
-          tone="muted"
+          tone={fleet.down > 0 ? "signal" : "muted"}
         />
       </ul>
 
@@ -213,16 +220,22 @@ export default async function AdminHomePage({
           )}
         </div>
 
-        {/* Activity feed sidebar */}
-        <div className="lg:col-span-4">
-          <h2 className="mb-3 font-mono text-xs uppercase tracking-[0.18em] text-muted">
-            Practice activity
-          </h2>
-          <ActivityFeed
-            items={activity}
-            variant="admin"
-            emptyText="No activity in the practice yet."
-          />
+        {/* Right column: fleet status + activity feed */}
+        <div className="lg:col-span-4 space-y-8">
+          {/* Quiet fleet card — only when no one is down (down case is
+              handled by the alert strip up top so we don't double-shout). */}
+          {fleet.down === 0 && <FleetStatusCard summary={fleet} />}
+
+          <div>
+            <h2 className="mb-3 font-mono text-xs uppercase tracking-[0.18em] text-muted">
+              Practice activity
+            </h2>
+            <ActivityFeed
+              items={activity}
+              variant="admin"
+              emptyText="No activity in the practice yet."
+            />
+          </div>
         </div>
       </div>
 
