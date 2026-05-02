@@ -1,6 +1,18 @@
-import { db, clients, users } from "@/db";
+"use server";
+
+import {
+  db,
+  clients,
+  users,
+  clientMembers,
+  requests,
+  healthChecks,
+  type Client,
+} from "@/db";
 import { eq, sql, and, ilike, desc } from "drizzle-orm";
-import { requireStaff } from "@/lib/auth-helpers";
+import { revalidatePath } from "next/cache";
+import { requireStaff, isStaff } from "@/lib/auth-helpers";
+import { recordAudit } from "@/server/audit";
 
 export type ClientListRow = {
   id: string;
@@ -103,4 +115,280 @@ export async function clientCountsByStatus(): Promise<{
     out.total += r.n;
   }
   return out;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Detail page
+   ──────────────────────────────────────────────────────────────────────── */
+
+export type ClientDetail = {
+  client: Client;
+  primaryUser: {
+    id: string;
+    name: string | null;
+    email: string | null;
+  } | null;
+  leadDoctor: {
+    id: string;
+    name: string | null;
+  } | null;
+  members: {
+    userId: string;
+    name: string | null;
+    email: string | null;
+    isAdmin: boolean;
+    joinedAt: Date;
+  }[];
+  recentRequests: {
+    id: string;
+    title: string;
+    status: string;
+    priority: string;
+    type: string;
+    createdAt: Date;
+    updatedAt: Date;
+  }[];
+  totalRequests: number;
+  openRequests: number;
+  latestCheck: {
+    ok: boolean;
+    statusCode: number | null;
+    responseTimeMs: number | null;
+    error: string | null;
+    checkedAt: Date;
+  } | null;
+};
+
+export async function getClientForStaff(clientId: string): Promise<ClientDetail | null> {
+  await requireStaff();
+
+  const cRows = await db()
+    .select()
+    .from(clients)
+    .where(eq(clients.id, clientId))
+    .limit(1);
+  if (cRows.length === 0) return null;
+  const client = cRows[0];
+
+  // Primary contact
+  let primaryUser: ClientDetail["primaryUser"] = null;
+  if (client.primaryUserId) {
+    const u = await db()
+      .select({ id: users.id, name: users.name, email: users.email })
+      .from(users)
+      .where(eq(users.id, client.primaryUserId))
+      .limit(1);
+    primaryUser = u[0] ?? null;
+  }
+
+  // Lead doctor
+  let leadDoctor: ClientDetail["leadDoctor"] = null;
+  if (client.leadDoctorId) {
+    const u = await db()
+      .select({ id: users.id, name: users.name })
+      .from(users)
+      .where(eq(users.id, client.leadDoctorId))
+      .limit(1);
+    leadDoctor = u[0] ?? null;
+  }
+
+  // Members
+  const memberRows = await db()
+    .select({
+      userId: clientMembers.userId,
+      isAdmin: clientMembers.isAdmin,
+      joinedAt: clientMembers.createdAt,
+      name: users.name,
+      email: users.email,
+    })
+    .from(clientMembers)
+    .leftJoin(users, eq(users.id, clientMembers.userId))
+    .where(eq(clientMembers.clientId, clientId));
+
+  // Recent requests
+  const reqRows = await db()
+    .select({
+      id: requests.id,
+      title: requests.title,
+      status: requests.status,
+      priority: requests.priority,
+      type: requests.type,
+      createdAt: requests.createdAt,
+      updatedAt: requests.updatedAt,
+    })
+    .from(requests)
+    .where(eq(requests.clientId, clientId))
+    .orderBy(desc(requests.updatedAt))
+    .limit(20);
+
+  // Counts
+  const counts = await db()
+    .select({
+      total: sql<number>`count(*)::int`,
+      open: sql<number>`count(*) filter (where status not in ('healed','closed'))::int`,
+    })
+    .from(requests)
+    .where(eq(requests.clientId, clientId));
+
+  // Latest health check
+  let latestCheck: ClientDetail["latestCheck"] = null;
+  if (client.websiteUrl) {
+    const c = await db()
+      .select({
+        ok: healthChecks.ok,
+        statusCode: healthChecks.statusCode,
+        responseTimeMs: healthChecks.responseTimeMs,
+        error: healthChecks.error,
+        checkedAt: healthChecks.checkedAt,
+      })
+      .from(healthChecks)
+      .where(eq(healthChecks.clientId, clientId))
+      .orderBy(desc(healthChecks.checkedAt))
+      .limit(1);
+    latestCheck = c[0]
+      ? { ...c[0], checkedAt: new Date(c[0].checkedAt) }
+      : null;
+  }
+
+  return {
+    client,
+    primaryUser,
+    leadDoctor,
+    members: memberRows.map((m) => ({
+      userId: m.userId,
+      name: m.name,
+      email: m.email,
+      isAdmin: m.isAdmin,
+      joinedAt: new Date(m.joinedAt),
+    })),
+    recentRequests: reqRows.map((r) => ({
+      ...r,
+      createdAt: new Date(r.createdAt),
+      updatedAt: new Date(r.updatedAt),
+    })),
+    totalRequests: counts[0]?.total ?? 0,
+    openRequests: counts[0]?.open ?? 0,
+    latestCheck,
+  };
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Mutations
+   ──────────────────────────────────────────────────────────────────────── */
+
+const ALLOWED_PLANS = new Set(["checkup", "general", "premium"]);
+const ALLOWED_STATUSES = new Set(["active", "lead", "discharged"]);
+
+/**
+ * Update an existing client. Founder-only fields (plan, status, MRR) are
+ * silently ignored when the caller isn't a founder. Non-financial fields
+ * (website, notes, lead doctor) are open to any staff role.
+ */
+export async function updateClient(formData: FormData): Promise<void> {
+  const session = await requireStaff();
+  const clientId = String(formData.get("clientId") ?? "");
+  if (!clientId) return;
+
+  const isFounder = session.user.role === "founder";
+  const updates: Partial<{
+    name: string;
+    websiteUrl: string | null;
+    plan: "checkup" | "general" | "premium";
+    status: "active" | "lead" | "discharged";
+    mrrCents: number;
+    notes: string | null;
+    leadDoctorId: string | null;
+    updatedAt: Date;
+  }> = {};
+
+  // Any staff can edit these
+  const name = String(formData.get("name") ?? "").trim();
+  if (name) updates.name = name.slice(0, 200);
+
+  const url = String(formData.get("websiteUrl") ?? "").trim();
+  if (url === "") {
+    updates.websiteUrl = null;
+  } else {
+    try {
+      const u = new URL(url);
+      if (u.protocol === "http:" || u.protocol === "https:") {
+        updates.websiteUrl = u.toString();
+      }
+    } catch {
+      /* keep current value */
+    }
+  }
+
+  const notes = String(formData.get("notes") ?? "");
+  if (notes !== "") updates.notes = notes.slice(0, 2000);
+
+  const leadDoctorId = String(formData.get("leadDoctorId") ?? "");
+  if (leadDoctorId === "__none__") updates.leadDoctorId = null;
+  else if (leadDoctorId) updates.leadDoctorId = leadDoctorId;
+
+  // Founder-only
+  if (isFounder) {
+    const plan = String(formData.get("plan") ?? "");
+    if (ALLOWED_PLANS.has(plan)) {
+      updates.plan = plan as "checkup" | "general" | "premium";
+    }
+    const status = String(formData.get("status") ?? "");
+    if (ALLOWED_STATUSES.has(status)) {
+      updates.status = status as "active" | "lead" | "discharged";
+    }
+    const mrrRaw = String(formData.get("mrrDollars") ?? "");
+    const mrrDollars = parseFloat(mrrRaw);
+    if (Number.isFinite(mrrDollars) && mrrDollars >= 0) {
+      updates.mrrCents = Math.round(mrrDollars * 100);
+    }
+  }
+
+  if (Object.keys(updates).length === 0) return;
+  updates.updatedAt = new Date();
+
+  // Read previous values for the audit log so we record a real diff
+  const before = await db()
+    .select()
+    .from(clients)
+    .where(eq(clients.id, clientId))
+    .limit(1);
+  if (before.length === 0) return;
+
+  await db().update(clients).set(updates).where(eq(clients.id, clientId));
+
+  // Diff for audit
+  const diffBefore: Record<string, unknown> = {};
+  const diffAfter: Record<string, unknown> = {};
+  for (const k of Object.keys(updates) as (keyof typeof updates)[]) {
+    if (k === "updatedAt") continue;
+    diffBefore[k] = (before[0] as unknown as Record<string, unknown>)[k];
+    diffAfter[k] = (updates as Record<string, unknown>)[k];
+  }
+  await recordAudit({
+    actorUserId: session.user.id,
+    action: "client.update",
+    targetType: "client",
+    targetId: clientId,
+    before: diffBefore,
+    after: diffAfter,
+  });
+
+  revalidatePath(`/admin/clients/${clientId}`);
+  revalidatePath("/admin/clients");
+  revalidatePath("/admin");
+}
+
+/** Returns the staff users available as a "lead doctor" pick. Used only to
+ *  populate the dropdown on the client detail edit form. */
+export async function listStaffForPicker(): Promise<
+  { id: string; name: string | null; email: string | null }[]
+> {
+  const session = await requireStaff();
+  if (!isStaff(session.user.role)) return [];
+  const rows = await db()
+    .select({ id: users.id, name: users.name, email: users.email })
+    .from(users)
+    .where(sql`${users.role} <> 'client'`)
+    .orderBy(users.name);
+  return rows;
 }
