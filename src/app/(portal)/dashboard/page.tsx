@@ -3,10 +3,8 @@ import Link from "next/link";
 import {
   Plus,
   ArrowRight,
-  CreditCard,
   BookOpen,
   Mail,
-  Lock,
   MessageCircle,
 } from "lucide-react";
 import { auth } from "@/auth";
@@ -17,7 +15,7 @@ import {
   inProgressForCurrentUser,
 } from "@/server/requests";
 import { latestScanForCurrentUser } from "@/server/activity";
-import { SiteUptimeCard } from "@/components/dashboard/site-uptime-card";
+import { SiteAtAGlance } from "@/components/dashboard/site-at-a-glance";
 import {
   StatusPill,
   PriorityPill,
@@ -56,6 +54,13 @@ export default async function HubPage() {
   const resolved = allRequests.filter((r) => r.status === "healed").length;
   const totalActive = needsReply.length + inProgress.length;
 
+  // "Last treatment" = most recently resolved request — the date our
+  // doctors last touched their site on the patient's behalf.
+  const lastTreatmentAt = allRequests
+    .filter((r) => r.status === "healed" || r.status === "closed")
+    .map((r) => new Date(r.updatedAt))
+    .sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
+
   return (
     <div className="mx-auto w-full max-w-[1280px] px-6 py-10 md:px-10 md:py-12">
       {/* Welcome banner */}
@@ -82,6 +87,15 @@ export default async function HubPage() {
           New request
         </Button>
       </header>
+
+      {/* Your site at a glance — top-of-hub, answers the three questions
+          (status, plan, last treatment) without making them scroll. */}
+      <SiteAtAGlance
+        clientId={client.id}
+        websiteUrl={client.websiteUrl}
+        plan={client.plan}
+        lastTreatmentAt={lastTreatmentAt}
+      />
 
       {/* Needs your reply — the headline panel */}
       {needsReply.length > 0 && (
@@ -204,36 +218,6 @@ export default async function HubPage() {
         />
       </section>
 
-      {/* Site Uptime + Care Plan */}
-      <div className="mt-10 grid gap-6 lg:grid-cols-2">
-        <SiteUptimeCard clientId={client.id} websiteUrl={client.websiteUrl} />
-
-        <div className="rounded-2xl border border-border bg-surface/40 p-7">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-accent">
-                Care plan
-              </p>
-              <h3 className="mt-2 text-xl font-semibold tracking-tight">
-                {planLabel(client.plan)}
-              </h3>
-              <p className="mt-2 max-w-sm text-sm text-muted">
-                {client.plan === "checkup"
-                  ? "Single checkup. Upgrade to General or Premium Care for ongoing monitoring."
-                  : "Active monthly care."}
-              </p>
-            </div>
-            <span className="grid h-12 w-12 place-items-center rounded-xl bg-accent-soft text-accent ring-1 ring-inset ring-accent/20">
-              <CreditCard className="h-5 w-5" />
-            </span>
-          </div>
-          <div className="mt-6 inline-flex items-center gap-2 text-xs text-muted">
-            <Lock className="h-3 w-3" />
-            Self-service billing in our next release. To change plans now, reply on any request.
-          </div>
-        </div>
-      </div>
-
       {/* Knowledge base + Contact */}
       <div className="mt-10 grid gap-6 lg:grid-cols-2">
         <div className="rounded-2xl border border-border bg-surface/40 p-7">
@@ -305,9 +289,3 @@ function Stat({
   );
 }
 
-function planLabel(plan: string): string {
-  if (plan === "checkup") return "Free Checkup";
-  if (plan === "general") return "General Care";
-  if (plan === "premium") return "Premium Care";
-  return "Custom plan";
-}
