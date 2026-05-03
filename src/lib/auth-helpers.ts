@@ -1,6 +1,5 @@
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
-import { headers } from "next/headers";
 import type { Session as NextAuthSession } from "next-auth";
 import { ADMIN_HOME, APP_HOME } from "@/lib/portal-redirect";
 
@@ -38,23 +37,10 @@ export async function requireUser(redirectTo?: string): Promise<Session> {
   if (session.user.suspended || session.user.deleted) {
     redirect("/login?error=Suspended");
   }
-  // 2FA enforcement gate. When `TWO_FACTOR_ENFORCED=true` is set on the
-  // environment, every signed-in user without a configured authenticator
-  // is bounced to /settings/security to set one up — *except* when
-  // they're already on that page (otherwise we'd loop). The middleware
-  // forwards the post-rewrite pathname via `x-pathname`.
-  if (
-    process.env.TWO_FACTOR_ENFORCED === "true" &&
-    !session.user.totpEnabled
-  ) {
-    const h = await headers();
-    const path = h.get("x-pathname") ?? "";
-    const onSecurityPage =
-      path.includes("/settings/security") || path.startsWith("/api/");
-    if (!onSecurityPage) {
-      redirect("/settings/security?enforce=1");
-    }
-  }
+  // NB: 2FA enforcement lives in the (admin) and (portal) layouts —
+  // we can't add the `next/headers` check here because this module is
+  // also imported by a Client Component (`message-thread`), and Next's
+  // build refuses to ship `next/headers` to the client bundle.
   return session;
 }
 

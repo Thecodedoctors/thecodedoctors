@@ -12,6 +12,10 @@ export const metadata: Metadata = {
     "Live operational status and recent incidents for The Code Doctors.",
 };
 
+// Status reads from the live DB on every visit — it MUST not be
+// prerendered at build time (the build sandbox has no DATABASE_URL).
+export const dynamic = "force-dynamic";
+
 const SEVERITY_CONFIG = {
   critical: {
     label: "Critical",
