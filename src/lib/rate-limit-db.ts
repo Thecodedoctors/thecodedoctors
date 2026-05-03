@@ -64,9 +64,6 @@ export async function checkRateLimit({
       })
       .returning({ count: rateLimitCounters.count });
     count = rows[0]?.count ?? 1;
-    // TEMP debug log — remove once rate limit is verified working in
-    // production (just observable noise in `wrangler tail`).
-    console.log("[rate-limit]", key, "→ count=" + count + " / limit=" + limit, "rows.len=" + rows.length);
   } catch (err) {
     // If the rate-limit table doesn't exist yet (migration pending)
     // or the DB is transiently down, fail OPEN — better to let a
