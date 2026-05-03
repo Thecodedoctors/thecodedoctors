@@ -68,3 +68,19 @@ export async function requireStaff(redirectTo?: string): Promise<Session> {
   }
   return session;
 }
+
+/**
+ * Strictest gate — founder only. Used for the credential vault
+ * (read side only) and any other action where the founder explicitly
+ * said "only me." Other staff get bounced to /admin.
+ *
+ * Switching this to allow doctors later is a one-liner: replace the
+ * role check with `if (!isStaff(session.user.role))`.
+ */
+export async function requireFounder(redirectTo?: string): Promise<Session> {
+  const session = await requireStaff(redirectTo);
+  if (session.user.role !== "founder") {
+    redirect(ADMIN_HOME);
+  }
+  return session;
+}

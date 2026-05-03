@@ -33,6 +33,7 @@ import {
 } from "@/server/lifecycle";
 import { ReasonActionButton } from "@/components/admin/reason-action-button";
 import { BackupsSection } from "@/components/admin/backups-section";
+import { CredentialsSection } from "@/components/admin/credentials-section";
 import { checkOneClientNow } from "@/server/health";
 import { StatusPill, PriorityPill, TypeLabel } from "@/components/status-pill";
 import { formatRelativeAgo } from "@/lib/time";
@@ -352,6 +353,8 @@ export default async function PatientDetailPage({
             </ul>
           )}
         </section>
+
+        <CredentialsSection clientId={c.id} />
 
         <BackupsSection clientId={c.id} />
 

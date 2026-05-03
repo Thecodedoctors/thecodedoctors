@@ -292,6 +292,64 @@ export const incidents = pgTable(
 );
 
 /**
+ * Doctor-requested credentials. The founder asks for sensitive things
+ * (hosting login, registrar access, API keys, etc.); the patient
+ * submits values via /dashboard/credentials; we encrypt the bundle
+ * at rest with `CREDENTIAL_ENCRYPTION_KEY` and surface the plaintext
+ * only to the founder, on demand, with every view audited. After the
+ * doctor is done they "close" the request — which wipes the blob from
+ * the row, keeping only the metadata.
+ *
+ * State machine:
+ *   open       (encrypted_submission IS NULL,    closed_at IS NULL)
+ *   submitted  (encrypted_submission IS NOT NULL, closed_at IS NULL)
+ *   closed     (closed_at IS NOT NULL — encrypted_submission wiped)
+ */
+export const credentialRequests = pgTable(
+  "credential_request",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    clientId: text("client_id")
+      .notNull()
+      .references(() => clients.id, { onDelete: "cascade" }),
+    requestedByUserId: text("requested_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    title: text("title").notNull(),
+    description: text("description"),
+    /** Field schema as JSON — list of `{ key, label, kind, required }`
+     *  describing what the patient should fill in. Doctor sets this
+     *  when creating the request. */
+    fieldsSchema: text("fields_schema").notNull().default("[]"),
+    /** Encrypted JSON blob of `{ key: value }` after the patient
+     *  submits. Format: `v1:<iv-b64>:<ciphertext-b64>`. Wiped on close. */
+    encryptedSubmission: text("encrypted_submission"),
+    /** Bumped if we ever rotate `CREDENTIAL_ENCRYPTION_KEY`. */
+    encryptionVersion: text("encryption_version"),
+    submittedAt: timestamp("submitted_at", { mode: "date" }),
+    submittedByUserId: text("submitted_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    closedAt: timestamp("closed_at", { mode: "date" }),
+    closedByUserId: text("closed_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    /** Free-form note the founder leaves when closing — e.g.
+     *  "Rotated; safe to discard." Visible to staff only. */
+    closeNote: text("close_note"),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("credential_request_client_idx").on(t.clientId),
+    index("credential_request_submitted_idx").on(t.submittedAt),
+    index("credential_request_closed_idx").on(t.closedAt),
+  ]
+);
+
+/**
  * Per-patient monthly reports. Authored by a doctor (status `draft`
  * until they hit publish), then frozen + emailed to the patient.
  *
@@ -667,6 +725,8 @@ export type ClientBackup = typeof clientBackups.$inferSelect;
 export type NewClientBackup = typeof clientBackups.$inferInsert;
 export type Incident = typeof incidents.$inferSelect;
 export type NewIncident = typeof incidents.$inferInsert;
+export type CredentialRequest = typeof credentialRequests.$inferSelect;
+export type NewCredentialRequest = typeof credentialRequests.$inferInsert;
 
 // Suppress unused-import warning for `sql` (kept for future migration helpers).
 void sql;

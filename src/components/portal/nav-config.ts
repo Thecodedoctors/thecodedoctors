@@ -15,6 +15,7 @@ import {
   LineChart,
   Database,
   AlertTriangle,
+  KeyRound,
 } from "lucide-react";
 
 export type NavItem = {
@@ -38,6 +39,7 @@ export const CLIENT_NAV: NavSection[] = [
       { href: "/requests", label: "Requests", icon: ListChecks },
       { href: "/health", label: "Site health", icon: HeartPulse },
       { href: "/backups", label: "Backups", icon: Database },
+      { href: "/credentials", label: "Credentials", icon: KeyRound },
       { href: "/reports", label: "Reports", icon: FileText },
       { href: "/billing", label: "Billing", icon: CreditCard },
       { href: "/knowledge", label: "Knowledge", icon: BookOpen },
@@ -67,6 +69,7 @@ export const ADMIN_NAV: NavSection[] = [
     heading: "Operations",
     items: [
       { href: "/reports", label: "Reports", icon: FileText },
+      { href: "/credentials", label: "Credentials", icon: KeyRound },
       { href: "/insights", label: "Insights", icon: LineChart },
       { href: "/incidents", label: "Incidents", icon: AlertTriangle },
       { href: "/audit", label: "Audit log", icon: ShieldCheck },
