@@ -13,8 +13,8 @@ import { getClientForStaff } from "@/server/clients";
 import {
   listReportsForClientAdmin,
   startNewReport,
-  labelForPeriod,
 } from "@/server/monthly-reports";
+import { labelForPeriod } from "@/lib/report-period";
 import { formatRelativeAgo } from "@/lib/time";
 import { cn } from "@/lib/cn";
 

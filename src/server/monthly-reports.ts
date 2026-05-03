@@ -8,6 +8,7 @@ import { requireUser, requireStaff } from "@/lib/auth-helpers";
 import { getOrCreateClientForUser } from "@/lib/clients";
 import { sendBrandEmail } from "@/lib/email";
 import { site } from "@/lib/site";
+import { labelForPeriod } from "@/lib/report-period";
 import { recordAudit } from "@/server/audit";
 
 /**
@@ -424,10 +425,6 @@ function previousMonthRange(): { start: Date; end: Date } {
   const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const end = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
   return { start, end };
-}
-
-export function labelForPeriod(d: Date): string {
-  return d.toLocaleDateString(undefined, { month: "long", year: "numeric" });
 }
 
 async function emailReportToClient({

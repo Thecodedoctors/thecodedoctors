@@ -15,8 +15,8 @@ import {
   saveReportDraft,
   publishReport,
   deleteReportDraft,
-  labelForPeriod,
 } from "@/server/monthly-reports";
+import { labelForPeriod } from "@/lib/report-period";
 import { formatAbsolute } from "@/lib/time";
 import { cn } from "@/lib/cn";
 
