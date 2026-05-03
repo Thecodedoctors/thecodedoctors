@@ -533,6 +533,13 @@ export const pendingSignups = pgTable(
     token: text("token").primaryKey(),
     email: text("email").notNull(),
     passwordHash: text("password_hash").notNull(),
+    /** Encrypted plaintext password — used ONCE at /welcome to
+     *  auto-sign-in the user after they pay. Cleared on finalize.
+     *  Encryption key is derived from AUTH_SECRET via SHA-256 (see
+     *  `lib/auto-signin-crypto.ts`). Format
+     *  `v1:<iv-b64>:<ciphertext-b64>`. Without this, the user would
+     *  have to retype their password on /welcome — bad UX. */
+    autoSigninPassword: text("auto_signin_password"),
     userName: text("user_name").notNull(),
     businessName: text("business_name").notNull(),
     websiteUrl: text("website_url").notNull(),

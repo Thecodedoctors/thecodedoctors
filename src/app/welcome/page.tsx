@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AlertCircle, ArrowRight } from "lucide-react";
-import { auth } from "@/auth";
+import { auth, signIn } from "@/auth";
 import {
   finalizePendingSignupBySessionId,
   signInFromWelcome,
@@ -16,38 +16,41 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-type SearchParams = Promise<{ session_id?: string }>;
+// Always render dynamically — finalize hits the DB + Stripe and signs
+// the user in; this MUST happen at request time.
+export const dynamic = "force-dynamic";
+
+type SearchParams = Promise<{ session_id?: string; error?: string }>;
 
 /**
  * The Stripe Checkout success-url callback. Public — no auth required,
  * because the user has no account yet at this point.
  *
- * What happens here:
+ * Flow:
  *   1. Read session_id query param.
  *   2. finalizePendingSignupBySessionId() — converts the pending_signup
- *      into real user/client/client_member rows, returns the user's
- *      email + stored password hash details.
- *   3. We can't directly auto-sign-in (we don't keep the plaintext
- *      password around), so we render a "Welcome — sign in to start"
- *      page with the email pre-filled. They sign in once and they're
- *      in. From then on, sign-in is normal.
+ *      into real user/client/client_member rows. Also returns the
+ *      decrypted auto-signin password (one-shot).
+ *   3. If we have the password, call signIn() server-side — that
+ *      throws NEXT_REDIRECT to /dashboard, the user lands logged in
+ *      without ever retyping their password. Best UX.
+ *   4. Fallback (rare): pending row was already consumed by the
+ *      webhook — render the manual sign-in form.
  *
  * If finalize fails (token expired, payment unresolved): show a quiet
  * error and link to /login.
  */
-
 export default async function WelcomePage({
   searchParams,
 }: {
   searchParams: SearchParams;
 }) {
-  // If they're somehow already signed in, send them home.
   const session = await auth();
   if (session?.user) {
     redirect(session.user.role === "client" ? APP_HOME : ADMIN_HOME);
   }
 
-  const { session_id } = await searchParams;
+  const { session_id, error } = await searchParams;
   if (!session_id) {
     return <Failure message="No checkout session referenced. Try the trial again." />;
   }
@@ -57,22 +60,36 @@ export default async function WelcomePage({
     return <Failure message={result.error} />;
   }
 
-  // Auto-sign-in: we have the password hash on the (now-deleted)
-  // pending_signup row, but we never keep the plaintext password —
-  // so we can't call signIn() directly. Instead, we fetch the
-  // password from a one-shot read of the row's hash... actually no,
-  // the row is deleted. The clean path: have finalize keep the
-  // plaintext password in memory just long enough to sign in.
-  //
-  // Implementation: peek at finalize's session metadata for an
-  // auto_login_password field — done by passing the raw password
-  // through finalize. For now, surface a polished sign-in CTA.
-  return <Success email={result.email} />;
+  // Happy path: we have the plaintext password from the just-completed
+  // signup → sign them in directly. signIn throws NEXT_REDIRECT on
+  // success which Next propagates to the browser.
+  if (result.autoSigninPassword) {
+    await signIn("credentials", {
+      email: result.email,
+      password: result.autoSigninPassword,
+      redirectTo: "/dashboard",
+    });
+    // Unreachable on success.
+  }
+
+  // Fallback: the webhook consumed the pending row before we got here,
+  // or AUTH_SECRET-based decryption failed. Show the manual form.
+  return (
+    <ManualSignIn email={result.email} sessionId={session_id} error={error} />
+  );
 }
 
 /* ──────────────────────────────────────────────────────────────────────── */
 
-function Success({ email }: { email: string }) {
+function ManualSignIn({
+  email,
+  sessionId,
+  error,
+}: {
+  email: string;
+  sessionId: string;
+  error: string | undefined;
+}) {
   return (
     <div className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center px-6 py-16">
       <Link href="/" aria-label="The Code Doctors home">
@@ -91,18 +108,21 @@ function Success({ email }: { email: string }) {
           get to your hub — your doctor will be in touch shortly.
         </p>
 
-        {/* Sign-in form: pre-fills email, asks for the password they
-            just chose during sign-up. After this they're signed in
-            permanently and never see this page again.
+        {error === "WrongPassword" && (
+          <div className="mt-4 rounded-lg border border-signal/30 bg-signal/5 px-4 py-3 text-xs text-signal">
+            That password didn&apos;t match. Try again, or use the full
+            sign-in page below.
+          </div>
+        )}
+        {error === "ShortPassword" && (
+          <div className="mt-4 rounded-lg border border-signal/30 bg-signal/5 px-4 py-3 text-xs text-signal">
+            Password must be at least 8 characters.
+          </div>
+        )}
 
-            Action is a top-level export (signInFromWelcome) rather
-            than an inline closure — Cloudflare Workers can't always
-            reconstruct the closed-over `email` reliably. */}
-        <form
-          action={signInFromWelcome}
-          className="mt-6 space-y-3 text-left"
-        >
+        <form action={signInFromWelcome} className="mt-6 space-y-3 text-left">
           <input type="hidden" name="email" value={email} />
+          <input type="hidden" name="sessionId" value={sessionId} />
           <p className="text-xs text-muted">
             Signing in as{" "}
             <span className="font-mono text-foreground">{email}</span>
@@ -177,4 +197,3 @@ function Failure({ message }: { message: string }) {
     </div>
   );
 }
-

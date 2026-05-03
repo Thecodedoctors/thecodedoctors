@@ -4,6 +4,7 @@ import { db, users, pendingSignups } from "@/db";
 import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { hashPassword } from "@/lib/password";
+import { encryptAutoSigninPassword } from "@/lib/auto-signin-crypto";
 import { findUserByReferralCode } from "@/server/referrals";
 import { getStripe, priceIdFor } from "@/lib/stripe";
 import { site } from "@/lib/site";
@@ -181,6 +182,11 @@ async function stashPendingSignup(args: {
 }): Promise<{ ok: true; token: string } | { ok: false; error: string }> {
   try {
     const passwordHash = await hashPassword(args.password);
+    // Encrypted plaintext, lives ~minutes (until /welcome runs).
+    // Used once by /welcome to auto-sign-in the user without making
+    // them retype the password they just chose 30 seconds ago. Cleared
+    // when finalize wipes the pending_signup row.
+    const autoSigninPassword = await encryptAutoSigninPassword(args.password);
     const token = randomToken();
     const expiresAt = new Date(
       Date.now() + PENDING_TTL_HOURS * 60 * 60 * 1000
@@ -190,6 +196,7 @@ async function stashPendingSignup(args: {
       token,
       email: args.email,
       passwordHash,
+      autoSigninPassword,
       userName: args.name,
       businessName: args.businessName,
       websiteUrl: args.websiteUrl,

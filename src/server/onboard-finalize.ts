@@ -8,10 +8,12 @@ import {
   pendingSignups,
 } from "@/db";
 import { eq } from "drizzle-orm";
+import { redirect } from "next/navigation";
 import type Stripe from "stripe";
 import { recordAudit } from "@/server/audit";
 import { getStripe } from "@/lib/stripe";
 import { signIn } from "@/auth";
+import { decryptAutoSigninPassword } from "@/lib/auto-signin-crypto";
 
 /**
  * Idempotent: converts a pending_signup row into real user/client/
@@ -34,6 +36,11 @@ export type FinalizeResult =
       /** New or existing — caller signs them in either way. */
       userId: string;
       clientId: string;
+      /** Plaintext password decrypted from pending_signup, used once
+       *  by /welcome for the auto-sign-in. Null when the row was
+       *  already consumed (e.g. webhook beat the redirect) — caller
+       *  falls back to the manual sign-in form in that case. */
+      autoSigninPassword: string | null;
     }
   | { ok: false; error: string };
 
@@ -165,6 +172,21 @@ export async function finalizePendingSignupBySessionId(
     };
   }
 
+  // Decrypt the one-time auto-signin password BEFORE deleting the
+  // pending row. Falls back to null if AUTH_SECRET is missing or the
+  // ciphertext is malformed — caller will show the manual sign-in
+  // form in that case.
+  let autoSigninPassword: string | null = null;
+  if (pending.autoSigninPassword) {
+    try {
+      autoSigninPassword = await decryptAutoSigninPassword(
+        pending.autoSigninPassword
+      );
+    } catch (err) {
+      console.error("[finalize] auto-signin decrypt failed", err);
+    }
+  }
+
   await db().delete(pendingSignups).where(eq(pendingSignups.token, token));
 
   await recordAudit({
@@ -183,7 +205,13 @@ export async function finalizePendingSignupBySessionId(
     },
   });
 
-  return { ok: true, email: pending.email, userId, clientId };
+  return {
+    ok: true,
+    email: pending.email,
+    userId,
+    clientId,
+    autoSigninPassword,
+  };
 }
 
 /**
@@ -221,26 +249,59 @@ async function reuseFromExistingUser(
     .where(eq(clients.primaryUserId, userId))
     .limit(1);
   const clientId = clientRows[0]?.id ?? "";
-  return { ok: true, email: userRows[0].email!, userId, clientId };
+  // No autoSigninPassword on this path — the pending row was already
+  // consumed. Caller falls back to the manual sign-in form.
+  return {
+    ok: true,
+    email: userRows[0].email!,
+    userId,
+    clientId,
+    autoSigninPassword: null,
+  };
 }
 
 /**
- * Top-level server action used by the /welcome sign-in form. Reads
- * email + password from the formData (both are hidden / typed inputs)
- * and calls Auth.js signIn with redirectTo=/dashboard.
+ * Top-level server action used by the /welcome sign-in form (the
+ * fallback shown when auto-signin couldn't recover the plaintext
+ * password). Reads email + password from the formData and calls
+ * Auth.js signIn with redirectTo=/dashboard.
  *
- * Defined as a top-level export rather than an inline closure on the
- * page component because inline server actions over closed-over
- * variables can fail with cryptic 5xx errors on Cloudflare Workers
- * (the action runtime can't always reconstruct the closure).
+ * If signIn fails (wrong password), redirects back to /welcome with
+ * an error flag instead of letting the AuthError bubble up to the
+ * Critical / global-error page.
  */
 export async function signInFromWelcome(formData: FormData): Promise<void> {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
-  if (!email || password.length < 8) return;
-  await signIn("credentials", {
-    email,
-    password,
-    redirectTo: "/dashboard",
-  });
+  const sessionId = String(formData.get("sessionId") ?? "");
+  if (!email || password.length < 8) {
+    redirectToWelcomeWithError(sessionId, "ShortPassword");
+  }
+  try {
+    await signIn("credentials", {
+      email,
+      password,
+      redirectTo: "/dashboard",
+    });
+  } catch (err) {
+    // Auth.js uses NEXT_REDIRECT on success — let those bubble out.
+    if (err && typeof err === "object" && "digest" in err) {
+      const digest = String((err as { digest?: unknown }).digest ?? "");
+      if (digest.startsWith("NEXT_REDIRECT")) throw err;
+    }
+    if (err && typeof err === "object" && "name" in err) {
+      const name = String((err as { name?: unknown }).name ?? "");
+      if (name === "CredentialsSignin" || name.includes("Auth")) {
+        redirectToWelcomeWithError(sessionId, "WrongPassword");
+      }
+    }
+    throw err;
+  }
+}
+
+function redirectToWelcomeWithError(sessionId: string, code: string): never {
+  const qs = new URLSearchParams();
+  if (sessionId) qs.set("session_id", sessionId);
+  qs.set("error", code);
+  redirect(`/welcome?${qs.toString()}`);
 }
