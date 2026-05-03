@@ -13,6 +13,8 @@ import {
   Settings,
   FileText,
   LineChart,
+  Database,
+  AlertTriangle,
 } from "lucide-react";
 
 export type NavItem = {
@@ -35,6 +37,7 @@ export const CLIENT_NAV: NavSection[] = [
       { href: "/", label: "Hub", icon: Home },
       { href: "/requests", label: "Requests", icon: ListChecks },
       { href: "/health", label: "Site health", icon: HeartPulse },
+      { href: "/backups", label: "Backups", icon: Database },
       { href: "/reports", label: "Reports", icon: FileText },
       { href: "/billing", label: "Billing", icon: CreditCard },
       { href: "/knowledge", label: "Knowledge", icon: BookOpen },
@@ -65,6 +68,7 @@ export const ADMIN_NAV: NavSection[] = [
     items: [
       { href: "/reports", label: "Reports", icon: FileText },
       { href: "/insights", label: "Insights", icon: LineChart },
+      { href: "/incidents", label: "Incidents", icon: AlertTriangle },
       { href: "/audit", label: "Audit log", icon: ShieldCheck },
       { href: "/runbooks", label: "Runbooks", icon: BookOpen },
     ],

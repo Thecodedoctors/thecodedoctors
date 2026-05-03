@@ -32,6 +32,7 @@ import {
   deleteUser,
 } from "@/server/lifecycle";
 import { ReasonActionButton } from "@/components/admin/reason-action-button";
+import { BackupsSection } from "@/components/admin/backups-section";
 import { checkOneClientNow } from "@/server/health";
 import { StatusPill, PriorityPill, TypeLabel } from "@/components/status-pill";
 import { formatRelativeAgo } from "@/lib/time";
@@ -351,6 +352,8 @@ export default async function PatientDetailPage({
             </ul>
           )}
         </section>
+
+        <BackupsSection clientId={c.id} />
 
         {/* Edit form */}
         <section className="mt-12">

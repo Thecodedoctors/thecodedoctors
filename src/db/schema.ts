@@ -220,6 +220,74 @@ export const clientMembers = pgTable(
 );
 
 /**
+ * Backup ledger — one row per snapshot we take of a patient's site.
+ * The actual archives live elsewhere (host-provided / R2 / etc.); this
+ * table is what the patient sees in their portal so they know we're
+ * actually doing the thing the plan promises.
+ *
+ * Recorded by the doctor (manual today; can be wired to an automated
+ * job later — same schema works for both).
+ */
+export const clientBackups = pgTable(
+  "client_backup",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    clientId: text("client_id")
+      .notNull()
+      .references(() => clients.id, { onDelete: "cascade" }),
+    recordedByUserId: text("recorded_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    /** The kind of backup — DB-only, files-only, or both. */
+    kind: text("kind").notNull().default("full"),
+    sizeBytes: bigint("size_bytes", { mode: "number" }),
+    /** Where the archive is stored — opaque string the doctor enters
+     *  (e.g. `r2://tcd-backups/2026-05-03-lumiere.tar.gz` or a host
+     *  panel URL). NOT a download link by itself; the patient sees
+     *  "stored: <provider>" treatment, not the raw key. */
+    location: text("location"),
+    /** Free-text notes — what was included, what was excluded, etc. */
+    notes: text("notes"),
+    takenAt: timestamp("taken_at", { mode: "date" }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("client_backup_client_idx").on(t.clientId),
+    index("client_backup_taken_idx").on(t.takenAt),
+  ]
+);
+
+/**
+ * Public service incidents — surfaced on the /status page. Doctors
+ * create and update these; patients (and the public) just read.
+ */
+export const incidents = pgTable(
+  "incident",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    title: text("title").notNull(),
+    /** "minor" — degraded perf for a subset of patients
+     *  "major"  — partial outage
+     *  "critical" — total outage */
+    severity: text("severity").notNull().default("minor"),
+    /** Ongoing narrative — most recent update at top. Markdown-ish. */
+    body: text("body").notNull().default(""),
+    startedAt: timestamp("started_at", { mode: "date" }).notNull().defaultNow(),
+    resolvedAt: timestamp("resolved_at", { mode: "date" }),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("incident_started_idx").on(t.startedAt),
+    index("incident_resolved_idx").on(t.resolvedAt),
+  ]
+);
+
+/**
  * Per-patient monthly reports. Authored by a doctor (status `draft`
  * until they hit publish), then frozen + emailed to the patient.
  *
@@ -591,6 +659,10 @@ export type HealthCheck = typeof healthChecks.$inferSelect;
 export type NewHealthCheck = typeof healthChecks.$inferInsert;
 export type MonthlyReport = typeof monthlyReports.$inferSelect;
 export type NewMonthlyReport = typeof monthlyReports.$inferInsert;
+export type ClientBackup = typeof clientBackups.$inferSelect;
+export type NewClientBackup = typeof clientBackups.$inferInsert;
+export type Incident = typeof incidents.$inferSelect;
+export type NewIncident = typeof incidents.$inferInsert;
 
 // Suppress unused-import warning for `sql` (kept for future migration helpers).
 void sql;

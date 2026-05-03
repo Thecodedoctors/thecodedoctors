@@ -34,6 +34,7 @@ export const site = {
       { href: "/checkup", label: "Free Checkup" },
       { href: "/book", label: "Book a Doctor" },
       { href: "/login", label: "Sign in" },
+      { href: "/status", label: "Service status" },
     ],
     legal: [
       { href: "/privacy", label: "Privacy" },
