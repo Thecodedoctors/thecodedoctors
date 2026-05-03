@@ -3,7 +3,7 @@
 import { db, users, clients } from "@/db";
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { requireStaff } from "@/lib/auth-helpers";
+import { requireStaff, requireFounder } from "@/lib/auth-helpers";
 import { sendBrandEmail } from "@/lib/email";
 import { site } from "@/lib/site";
 import { recordAudit } from "@/server/audit";
@@ -280,7 +280,9 @@ export async function unpauseClient(
 export async function dischargeClient(
   formData: FormData
 ): Promise<LifecycleResult> {
-  const session = await requireStaff();
+  // Founder-only — discharge is permanent and revenue-impacting; no
+  // doctor should be able to fire a paying patient unilaterally.
+  const session = await requireFounder();
   const clientId = String(formData.get("clientId") ?? "");
   const reason = sanitizeReason(formData.get("reason"));
   if (!clientId) return { ok: false, error: "Missing patient." };

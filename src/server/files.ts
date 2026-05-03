@@ -32,7 +32,8 @@ export type FileRow = {
   filename: string;
   sizeBytes: number;
   contentType: string;
-  uploaderUserId: string;
+  /** Null when the uploading user was hard-deleted (FK is now `set null`). */
+  uploaderUserId: string | null;
   uploaderName: string | null;
   createdAt: Date;
 };
@@ -59,13 +60,18 @@ export async function listFilesForRequest(requestId: string): Promise<FileRow[]>
     .where(eq(files.requestId, requestId))
     .orderBy(desc(files.createdAt));
 
-  // Resolve uploader names — small N, single batched query
+  // Resolve uploader names — small N, single batched query. Filter
+  // out null uploaderUserIds (the user was hard-deleted).
   if (rows.length === 0) return [];
-  const uploaderIds = [...new Set(rows.map((r) => r.uploaderUserId))];
-  const userRows = await db()
-    .select({ id: users.id, name: users.name })
-    .from(users)
-    .where(inArray(users.id, uploaderIds));
+  const uploaderIds = [
+    ...new Set(rows.map((r) => r.uploaderUserId).filter((id): id is string => Boolean(id))),
+  ];
+  const userRows = uploaderIds.length
+    ? await db()
+        .select({ id: users.id, name: users.name })
+        .from(users)
+        .where(inArray(users.id, uploaderIds))
+    : [];
   const userById = new Map(userRows.map((u) => [u.id, u]));
 
   return rows.map((r) => ({
@@ -74,7 +80,9 @@ export async function listFilesForRequest(requestId: string): Promise<FileRow[]>
     sizeBytes: r.sizeBytes,
     contentType: r.contentType,
     uploaderUserId: r.uploaderUserId,
-    uploaderName: userById.get(r.uploaderUserId)?.name ?? null,
+    uploaderName: r.uploaderUserId
+      ? userById.get(r.uploaderUserId)?.name ?? null
+      : null,
     createdAt: new Date(r.createdAt),
   }));
 }

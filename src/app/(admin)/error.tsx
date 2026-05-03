@@ -4,9 +4,10 @@ import { useEffect } from "react";
 
 /**
  * Practice-portal error boundary. Catches anything that throws inside
- * /admin/* and surfaces the error message + digest to staff. Showing the
- * raw message is fine here — these routes are already gated to staff
- * roles and never reach end users.
+ * /admin/* and surfaces the digest only — partner-doctors and
+ * read-only roles get the same staff portal, and we don't want raw
+ * exception messages or stack traces in their face. Founders who
+ * need to debug can grep `wrangler tail` by digest.
  */
 export default function AdminError({
   error,
@@ -16,37 +17,30 @@ export default function AdminError({
   reset: () => void;
 }) {
   useEffect(() => {
+    // Logged client-side and server-side; the worker tail is the
+    // canonical place to read the actual stack.
     console.error("[admin error boundary]", error);
   }, [error]);
 
   return (
-    <div className="mx-auto max-w-2xl px-6 py-20">
+    <div className="mx-auto max-w-xl px-6 py-20">
       <p className="font-mono text-xs uppercase tracking-[0.18em] text-signal">
         Practice · Page error
       </p>
       <h1 className="mt-3 text-3xl font-semibold tracking-tight md:text-4xl">
-        This page didn&apos;t render.
+        Something didn&apos;t respond.
       </h1>
       <p className="mt-3 text-sm text-muted">
-        An exception was thrown while loading this view. The message is
-        shown below for debugging.
+        We&apos;ve been paged and the trace is in the worker logs.
+        Try again, or head back to the practice home.
       </p>
 
-      <pre className="mt-6 overflow-x-auto whitespace-pre-wrap break-all rounded-2xl border border-signal/30 bg-signal/5 p-5 font-mono text-xs text-foreground">
-        <strong className="text-signal">{error.name}:</strong> {error.message}
-        {error.digest && (
-          <>
-            {"\n\n"}
-            <span className="text-muted">digest: {error.digest}</span>
-          </>
-        )}
-        {error.stack && (
-          <>
-            {"\n\n"}
-            <span className="text-muted">{error.stack}</span>
-          </>
-        )}
-      </pre>
+      {error.digest && (
+        <p className="mt-6 inline-flex items-center gap-2 rounded-md border border-border-strong bg-surface/40 px-3 py-1.5 font-mono text-[11px] text-muted">
+          <span className="uppercase tracking-[0.16em]">digest</span>
+          <span className="text-foreground">{error.digest}</span>
+        </p>
+      )}
 
       <div className="mt-6 flex items-center gap-3">
         <button

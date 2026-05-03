@@ -6,6 +6,10 @@ import { isStaff } from "@/lib/auth-helpers";
 import { userBelongsToClient } from "@/lib/clients";
 import { getUploadsBucket } from "@/lib/r2";
 
+// Force dynamic — this route reads the session cookie and must
+// never be prerendered or aggressively cached.
+export const dynamic = "force-dynamic";
+
 /**
  * Authenticated download. Streams the R2 object to the requesting user
  * after verifying they have access to the parent request.
@@ -26,6 +30,12 @@ export async function GET(
 
   const session = await auth();
   if (!session?.user) {
+    return new NextResponse("Unauthorized", { status: 401 });
+  }
+  // Suspended / soft-deleted users can't fetch attachments either —
+  // these are the same security gates the layouts apply via
+  // requireClient/requireStaff.
+  if (session.user.suspended || session.user.deleted) {
     return new NextResponse("Unauthorized", { status: 401 });
   }
 

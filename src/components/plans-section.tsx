@@ -36,7 +36,7 @@ const plans: Plan[] = [
     blurb: "Ongoing care for healthy sites. Stay fast, secure, online.",
     features: [
       "Managed hosting & SSL",
-      "Daily backups",
+      "Backups before every change, kept on file",
       "Edits and fixes — whatever your site needs",
       "Uptime monitoring & alerts",
       "Monthly report from your doctor",

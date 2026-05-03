@@ -1,29 +1,25 @@
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
-import { auth } from "@/auth";
-import { AppShell } from "@/components/portal/app-shell";
-import { ADMIN_HOME } from "@/lib/portal-redirect";
+import { requireClient } from "@/lib/auth-helpers";
 
 /**
- * Client portal layout. Auth-gated. Staff users get redirected to the
- * admin portal — they shouldn't see this view.
+ * Client portal layout. Auth-gated via `requireClient` — that helper
+ * also bounces suspended/deleted users to the login page (the raw
+ * `auth()` call we used to use here didn't, so a freshly-suspended
+ * staff member kept their session until JWT expiry).
  *
  * Two-factor: when `TWO_FACTOR_ENFORCED=true` is set on the env, any
  * patient without a configured authenticator is bounced to
  * /settings/security until they set one up.
  */
+import { AppShell } from "@/components/portal/app-shell";
+
 export default async function ClientPortalLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const session = await auth();
-  if (!session?.user) {
-    redirect("/login?next=/dashboard");
-  }
-  if (session.user.role && session.user.role !== "client") {
-    redirect(ADMIN_HOME);
-  }
+  const session = await requireClient("/dashboard");
   if (
     process.env.TWO_FACTOR_ENFORCED === "true" &&
     !session.user.totpEnabled

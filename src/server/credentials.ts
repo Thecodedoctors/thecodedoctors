@@ -292,9 +292,12 @@ export async function createCredentialRequest(
   redirect(`/admin/credentials/${id}`);
 }
 
-/** Form action — staff closes a request, wiping the encrypted blob. */
+/** Form action — founder closes a request, wiping the encrypted blob.
+ *  Founder-only because closing is the only way to delete a submission
+ *  before the founder reads it; we don't want a doctor doing that
+ *  while the founder is away. */
 export async function closeCredentialRequest(formData: FormData): Promise<void> {
-  const session = await requireStaff();
+  const session = await requireFounder();
   const requestId = String(formData.get("requestId") ?? "");
   const note = String(formData.get("closeNote") ?? "").slice(0, MAX_NOTE) || null;
   if (!requestId) return;

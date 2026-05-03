@@ -397,9 +397,14 @@ export const requests = pgTable(
     clientId: text("client_id")
       .notNull()
       .references(() => clients.id, { onDelete: "cascade" }),
-    submittedByUserId: text("submitted_by_user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "set null" }),
+    /** Author of the original request. NOT marked notNull because the
+     *  FK is `onDelete: "set null"` (the two were a runtime conflict in
+     *  Postgres — you can't satisfy both). When a user gets hard-deleted
+     *  via SQL, their authored requests stay on the medical record with
+     *  a null author, which is what we want. */
+    submittedByUserId: text("submitted_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
     assignedDoctorId: text("assigned_doctor_id").references(() => users.id, {
       onDelete: "set null",
     }),
@@ -434,9 +439,13 @@ export const messages = pgTable(
     requestId: text("request_id")
       .notNull()
       .references(() => requests.id, { onDelete: "cascade" }),
-    authorUserId: text("author_user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "set null" }),
+    /** Author. Same FK reasoning as `requests.submittedByUserId` — drop
+     *  notNull so the `onDelete: set null` cascade actually works.
+     *  Hard-deleting a user keeps the message text on the record with
+     *  a null author (rendered as "(deleted user)" in the UI). */
+    authorUserId: text("author_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
     body: text("body").notNull(),
     /** Internal notes are visible to staff only. */
     internal: boolean("internal").notNull().default(false),
@@ -454,9 +463,12 @@ export const files = pgTable(
     requestId: text("request_id").references(() => requests.id, {
       onDelete: "cascade",
     }),
-    uploaderUserId: text("uploader_user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "set null" }),
+    /** Uploader. Same FK reasoning as `messages.authorUserId` —
+     *  drop notNull so `onDelete: set null` doesn't conflict. Files
+     *  remain attached to the request after the uploader is deleted. */
+    uploaderUserId: text("uploader_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
     filename: text("filename").notNull(),
     sizeBytes: bigint("size_bytes", { mode: "number" }).notNull(),
     contentType: text("content_type").notNull(),

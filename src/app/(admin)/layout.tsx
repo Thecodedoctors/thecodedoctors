@@ -1,19 +1,13 @@
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
-import { auth } from "@/auth";
+import { requireStaff } from "@/lib/auth-helpers";
 import { AppShell } from "@/components/portal/app-shell";
-import { APP_HOME } from "@/lib/portal-redirect";
-
-const STAFF_ROLES = new Set([
-  "doctor",
-  "senior_doctor",
-  "founder",
-  "readonly",
-]);
 
 /**
- * Practice portal layout. Only staff roles can see this; clients hitting
- * /admin/* get redirected to their dashboard.
+ * Practice portal layout. Auth-gated via `requireStaff` — that helper
+ * also bounces suspended/deleted users to /login (the raw `auth()`
+ * we used to call here didn't, so a freshly-suspended doctor kept
+ * working until JWT expiry).
  *
  * Two-factor: when `TWO_FACTOR_ENFORCED=true` is set on the env, any
  * staff user without a configured authenticator is bounced to
@@ -24,13 +18,7 @@ export default async function AdminLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const session = await auth();
-  if (!session?.user) {
-    redirect("/login?next=/admin");
-  }
-  if (!STAFF_ROLES.has(session.user.role ?? "client")) {
-    redirect(APP_HOME);
-  }
+  const session = await requireStaff("/admin");
   if (
     process.env.TWO_FACTOR_ENFORCED === "true" &&
     !session.user.totpEnabled
