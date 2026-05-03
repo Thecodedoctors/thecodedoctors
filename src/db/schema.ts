@@ -96,6 +96,10 @@ export const users = pgTable("user", {
   referralCode: text("referral_code"),
   totpSecret: text("totp_secret"), // encrypted at the app layer
   totpEnabled: boolean("totp_enabled").notNull().default(false),
+  /** PBKDF2 hashes of single-use recovery codes generated at TOTP
+   *  setup. JSON-encoded array. Each code is consumed by removing
+   *  its hash from the array. */
+  totpRecoveryCodes: text("totp_recovery_codes"),
   twoFactorRequired: boolean("two_factor_required").notNull().default(false),
   lastLoginAt: timestamp("last_login_at", { mode: "date" }),
   /** Suspended users can't sign in. Cleared when un-suspended. */

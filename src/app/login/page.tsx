@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Mail, Lock, ArrowRight } from "lucide-react";
+import { Mail, Lock, ArrowRight, KeyRound } from "lucide-react";
 import { AuthError } from "next-auth";
 import { eq } from "drizzle-orm";
 import { signIn, auth } from "@/auth";
@@ -26,11 +26,14 @@ async function loginAction(formData: FormData): Promise<void> {
   "use server";
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
+  const totpCode = String(formData.get("totpCode") ?? "").trim();
   const next = String(formData.get("next") ?? "/dashboard") || "/dashboard";
 
-  const back = (err: string) =>
+  const back = (err: string, opts: { keepEmail?: boolean } = {}) =>
     redirect(
-      `/login?error=${err}&email=${encodeURIComponent(email)}&next=${encodeURIComponent(next)}`
+      `/login?error=${err}&email=${encodeURIComponent(email)}&next=${encodeURIComponent(next)}${
+        opts.keepEmail === false ? "" : ""
+      }`
     );
 
   if (!email) back("MissingEmail");
@@ -39,8 +42,7 @@ async function loginAction(formData: FormData): Promise<void> {
   // Pre-check suspended / deleted state so the user gets accurate copy
   // instead of a generic "wrong password." Trade-off: this leaks
   // existence + state for that email — acceptable here because we're
-  // not in an enumeration-sensitive context (patients aren't a target
-  // for credential-stuffing campaigns at this scale).
+  // not in an enumeration-sensitive context.
   if (isDbConfigured()) {
     try {
       const rows = await db()
@@ -55,9 +57,7 @@ async function loginAction(formData: FormData): Promise<void> {
       if (u?.deletedAt) back("Deleted");
       if (u?.suspendedAt) back("Suspended");
     } catch {
-      // If the lookup fails (transient DB error), fall through to the
-      // normal sign-in path — they'll get a generic error on the real
-      // attempt, which is the safe default.
+      /* fall through */
     }
   }
 
@@ -65,11 +65,22 @@ async function loginAction(formData: FormData): Promise<void> {
     await signIn("credentials", {
       email,
       password,
+      totpCode,
       redirectTo: next,
     });
   } catch (err) {
     // Auth.js uses NEXT_REDIRECT on success; let that propagate.
-    if (err instanceof AuthError) back("Credentials");
+    if (err instanceof AuthError) {
+      const code =
+        // Custom CredentialsSignin subclasses set their own .code which
+        // bubbles up via err.cause.err.code in some Auth.js versions.
+        // Cover both the direct property and the cause path.
+        (err as { code?: string }).code ??
+        ((err as { cause?: { err?: { code?: string } } }).cause?.err?.code ?? "");
+      if (code === "TotpRequired") back("TotpRequired");
+      if (code === "TotpInvalid") back("TotpInvalid");
+      back("Credentials");
+    }
     throw err;
   }
 }
@@ -155,6 +166,30 @@ export default async function LoginPage({
                 className="w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted"
               />
             </label>
+
+            {/* TOTP code — hidden until the server tells us we need it.
+                Once the user has 2FA on, the first submit fails with
+                error=TotpRequired; we re-render with this field visible
+                and pre-focused. */}
+            {(params.error === "TotpRequired" ||
+              params.error === "TotpInvalid") && (
+              <label className="flex items-center gap-3 rounded-xl bg-background px-4 py-3 ring-1 ring-inset ring-accent/60 focus-within:ring-accent">
+                <KeyRound className="h-4 w-4 shrink-0 text-accent" />
+                <input
+                  type="text"
+                  name="totpCode"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  pattern="\d{6}|[A-Za-z0-9-]{8,}"
+                  required
+                  autoFocus
+                  placeholder="6-digit code from your authenticator"
+                  aria-label="Authenticator code or recovery code"
+                  className="w-full bg-transparent font-mono tracking-widest text-foreground outline-none placeholder:text-muted placeholder:font-sans placeholder:tracking-normal text-sm"
+                />
+              </label>
+            )}
+
             <Button
               type="submit"
               size="md"
@@ -208,6 +243,10 @@ function errorCopy(code: string): string {
       return "This account is suspended. Reach out to hello@thecodedoctors.com if you think this is a mistake.";
     case "Deleted":
       return "This account has been closed. Reach out to hello@thecodedoctors.com if you need to reopen it.";
+    case "TotpRequired":
+      return "Almost in — enter the 6-digit code from your authenticator app, or a recovery code if you've lost your device.";
+    case "TotpInvalid":
+      return "That code doesn't match. Try the next one your app shows, or use a recovery code.";
     default:
       return "We couldn't sign you in. Try again, or reach out to hello@thecodedoctors.com.";
   }

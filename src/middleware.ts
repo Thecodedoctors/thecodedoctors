@@ -57,28 +57,36 @@ export function middleware(request: NextRequest) {
   const rawHost = request.headers.get("host") ?? "";
   const host = rawHost.toLowerCase().split(":")[0];
 
+  // Forward the post-rewrite pathname to layouts via a header so the
+  // 2FA enforcement gate can know whether to skip the redirect for
+  // /settings/security (avoiding an infinite loop).
+  const forwardHeaders = new Headers(request.headers);
+  forwardHeaders.set("x-pathname", url.pathname);
+
   if (isPassThrough(url.pathname)) {
-    return NextResponse.next();
+    return NextResponse.next({ request: { headers: forwardHeaders } });
   }
 
   // Client portal subdomain → rewrite to /dashboard/...
   if (host === APP_SUB || host === APP_LOCAL) {
     if (!url.pathname.startsWith("/dashboard")) {
-      url.pathname =
-        url.pathname === "/" ? "/dashboard" : `/dashboard${url.pathname}`;
-      return NextResponse.rewrite(url);
+      const rewritten = url.pathname === "/" ? "/dashboard" : `/dashboard${url.pathname}`;
+      forwardHeaders.set("x-pathname", rewritten);
+      url.pathname = rewritten;
+      return NextResponse.rewrite(url, { request: { headers: forwardHeaders } });
     }
-    return NextResponse.next();
+    return NextResponse.next({ request: { headers: forwardHeaders } });
   }
 
   // Staff portal subdomain → rewrite to /admin/...
   if (host === ADMIN_SUB || host === ADMIN_LOCAL) {
     if (!url.pathname.startsWith("/admin")) {
-      url.pathname =
-        url.pathname === "/" ? "/admin" : `/admin${url.pathname}`;
-      return NextResponse.rewrite(url);
+      const rewritten = url.pathname === "/" ? "/admin" : `/admin${url.pathname}`;
+      forwardHeaders.set("x-pathname", rewritten);
+      url.pathname = rewritten;
+      return NextResponse.rewrite(url, { request: { headers: forwardHeaders } });
     }
-    return NextResponse.next();
+    return NextResponse.next({ request: { headers: forwardHeaders } });
   }
 
   // On the apex domain — redirect any /dashboard or /admin path to the
@@ -100,7 +108,7 @@ export function middleware(request: NextRequest) {
     }
   }
 
-  return NextResponse.next();
+  return NextResponse.next({ request: { headers: forwardHeaders } });
 }
 
 export const config = {

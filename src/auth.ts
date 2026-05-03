@@ -1,8 +1,12 @@
-import NextAuth, { type DefaultSession } from "next-auth";
+import NextAuth, {
+  type DefaultSession,
+  CredentialsSignin,
+} from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { eq } from "drizzle-orm";
 import { db, isDbConfigured, users } from "@/db";
 import { verifyPassword } from "@/lib/password";
+import { verifyTotpForLogin } from "@/server/two-factor";
 
 /**
  * Auth.js v5 wired to Drizzle.
@@ -41,6 +45,18 @@ const STAFF_ROLES = new Set(["doctor", "senior_doctor", "founder", "readonly"]);
 const isProd = process.env.NODE_ENV === "production";
 
 /**
+ * Custom credentials-signin error codes the login form reads to
+ * surface specific copy ("Enter your authenticator code" vs the
+ * generic "wrong password").
+ */
+class TotpRequiredError extends CredentialsSignin {
+  code = "TotpRequired";
+}
+class TotpInvalidError extends CredentialsSignin {
+  code = "TotpInvalid";
+}
+
+/**
  * In production we set the cookie Domain to `.thecodedoctors.com` so the same
  * session is recognised on apex + app + admin subdomains. In dev we leave it
  * undefined so localhost cookies behave normally.
@@ -64,10 +80,12 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       credentials: {
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
+        totpCode: { label: "Authenticator code", type: "text" },
       },
       async authorize(creds) {
         const email = String(creds?.email ?? "").trim().toLowerCase();
         const password = String(creds?.password ?? "");
+        const totpCode = String(creds?.totpCode ?? "");
         if (!email || !password || password.length < 8) return null;
         if (!isDbConfigured()) return null;
 
@@ -90,6 +108,20 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
         const ok = await verifyPassword(password, user.passwordHash);
         if (!ok) return null;
+
+        // 2FA challenge — required for accounts that have TOTP enabled.
+        // We bubble distinct sentinel errors so the login page can
+        // show the right copy.
+        if (user.totpEnabled) {
+          if (!totpCode) {
+            throw new TotpRequiredError();
+          }
+          const totpOk = await verifyTotpForLogin(user.id, totpCode);
+          if (!totpOk) {
+            throw new TotpInvalidError();
+          }
+        }
+
         return { id: user.id, email: user.email!, role: user.role };
       },
     }),
