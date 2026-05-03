@@ -12,7 +12,6 @@ import {
   Bell,
   Sparkles,
   Settings,
-  HelpCircle,
 } from "lucide-react";
 
 export type NavItem = {
@@ -45,7 +44,6 @@ export const CLIENT_NAV: NavSection[] = [
       { href: "/notifications", label: "Notifications", icon: Bell },
       { href: "/referrals", label: "Refer a friend", icon: Sparkles },
       { href: "/settings", label: "Settings", icon: Settings },
-      { href: "/help", label: "Help", icon: HelpCircle },
     ],
   },
 ];
@@ -80,7 +78,7 @@ export const ADMIN_NAV: NavSection[] = [
 export const MOBILE_BOTTOM_NAV_CLIENT: NavItem[] = [
   { href: "/", label: "Hub", icon: Home },
   { href: "/requests", label: "Requests", icon: ListChecks },
-  { href: "/help", label: "Help", icon: HelpCircle },
+  { href: "/knowledge", label: "Knowledge", icon: BookOpen },
 ];
 
 export const MOBILE_BOTTOM_NAV_ADMIN: NavItem[] = [
