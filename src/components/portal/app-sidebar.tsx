@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Stethoscope } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { Logo } from "@/components/logo";
 import { CLIENT_NAV, ADMIN_NAV, type NavItem, type NavSection } from "./nav-config";
 
 type Variant = "client" | "admin";
@@ -19,7 +19,7 @@ export function AppSidebar({
   const current = normalizePath(pathname);
   const sections = variant === "admin" ? ADMIN_NAV : CLIENT_NAV;
   const accentClass = variant === "admin" ? "text-signal" : "text-accent";
-  const wordmark = variant === "admin" ? "Practice" : "Patient Portal";
+  const surfaceLabel = variant === "admin" ? "Practice" : "Patient Portal";
 
   return (
     <aside
@@ -29,18 +29,10 @@ export function AppSidebar({
       )}
       aria-label={`${variant === "admin" ? "Practice" : "Patient"} navigation`}
     >
-      {/* Brand */}
+      {/* Brand mark + surface label */}
       <div className="flex h-14 items-center gap-2.5 border-b border-border/60 px-5">
-        <span
-          className={cn(
-            "grid h-7 w-7 place-items-center rounded-md bg-surface ring-1 ring-border-strong",
-            accentClass
-          )}
-          aria-hidden
-        >
-          <Stethoscope className="h-3.5 w-3.5" />
-        </span>
-        <span className="text-sm font-semibold tracking-tight">{wordmark}</span>
+        <Logo variant="mark" size={16} />
+        <span className="text-sm font-semibold tracking-tight">{surfaceLabel}</span>
       </div>
 
       {/* Sections */}

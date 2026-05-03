@@ -53,9 +53,9 @@ export const metadata: Metadata = {
       "max-video-preview": -1,
     },
   },
-  icons: {
-    icon: [{ url: "/favicon.ico", type: "image/x-icon" }],
-  },
+  // Favicon is auto-discovered from `src/app/icon.svg` by Next.js — no
+  // explicit `icons` field needed. Brand mark is the bracketed pulse on
+  // a teal square (see `src/components/logo.tsx`).
 };
 
 export const viewport: Viewport = {

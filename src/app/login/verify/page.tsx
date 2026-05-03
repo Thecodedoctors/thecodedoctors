@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Mail, Stethoscope } from "lucide-react";
+import { Mail } from "lucide-react";
+import { Logo } from "@/components/logo";
 
 export const metadata: Metadata = {
   title: "Check your inbox",
@@ -11,17 +12,8 @@ export default function VerifyRequestPage() {
   return (
     <div className="flex min-h-screen items-center justify-center px-6 py-16">
       <div className="w-full max-w-md text-center">
-        <Link
-          href="/"
-          className="mb-10 inline-flex items-center gap-2.5 text-foreground"
-        >
-          <span
-            className="grid h-8 w-8 place-items-center rounded-md bg-surface text-accent ring-1 ring-border-strong"
-            aria-hidden
-          >
-            <Stethoscope className="h-4 w-4" />
-          </span>
-          <span className="font-semibold tracking-tight">The Code Doctors</span>
+        <Link href="/" aria-label="The Code Doctors home" className="mb-10 inline-block">
+          <Logo size={20} />
         </Link>
 
         <div className="rounded-2xl border border-border-strong bg-surface/60 p-10">

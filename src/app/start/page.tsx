@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Stethoscope, CheckCircle2, ShieldCheck } from "lucide-react";
+import { CheckCircle2, ShieldCheck } from "lucide-react";
 import { auth } from "@/auth";
 import { OnboardForm } from "@/components/onboard-form";
+import { Logo } from "@/components/logo";
 import { ADMIN_HOME, APP_HOME } from "@/lib/portal-redirect";
 
 export const metadata: Metadata = {
@@ -72,14 +73,8 @@ export default async function StartPage({
     <div className="mx-auto grid min-h-screen max-w-6xl gap-12 px-6 py-16 lg:grid-cols-2 lg:py-24">
       {/* Left — plan */}
       <div className="flex flex-col">
-        <Link
-          href="/"
-          className="inline-flex items-center gap-2.5 self-start text-foreground"
-        >
-          <span className="grid h-8 w-8 place-items-center rounded-md bg-surface text-accent ring-1 ring-inset ring-border-strong">
-            <Stethoscope className="h-4 w-4" />
-          </span>
-          <span className="font-semibold tracking-tight">The Code Doctors</span>
+        <Link href="/" aria-label="The Code Doctors home" className="self-start">
+          <Logo size={20} />
         </Link>
 
         <div className="mt-12">

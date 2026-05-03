@@ -3,8 +3,9 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { X, Stethoscope } from "lucide-react";
+import { X } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { Logo } from "@/components/logo";
 import { CLIENT_NAV, ADMIN_NAV, type NavItem } from "./nav-config";
 
 type Variant = "client" | "admin";
@@ -21,7 +22,7 @@ export function MobileNavDrawer({
   const pathname = usePathname();
   const sections = variant === "admin" ? ADMIN_NAV : CLIENT_NAV;
   const accentClass = variant === "admin" ? "text-signal" : "text-accent";
-  const wordmark = variant === "admin" ? "Practice" : "Patient Portal";
+  const surfaceLabel = variant === "admin" ? "Practice" : "Patient Portal";
 
   // Lock scroll when open. Close on route change.
   useEffect(() => {
@@ -61,17 +62,9 @@ export function MobileNavDrawer({
       >
         <div className="flex h-14 items-center justify-between gap-2 border-b border-border/60 px-5">
           <div className="flex items-center gap-2.5">
-            <span
-              className={cn(
-                "grid h-7 w-7 place-items-center rounded-md bg-surface ring-1 ring-border-strong",
-                accentClass
-              )}
-              aria-hidden
-            >
-              <Stethoscope className="h-3.5 w-3.5" />
-            </span>
+            <Logo variant="mark" size={16} />
             <span className="text-sm font-semibold tracking-tight">
-              {wordmark}
+              {surfaceLabel}
             </span>
           </div>
           <button

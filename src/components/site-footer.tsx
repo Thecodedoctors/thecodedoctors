@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { site } from "@/lib/site";
-import { Stethoscope } from "lucide-react";
+import { Logo } from "@/components/logo";
 
 export function SiteFooter() {
   const year = new Date().getFullYear();
@@ -9,14 +9,8 @@ export function SiteFooter() {
       <div className="mx-auto w-full max-w-6xl px-6 py-16 md:px-10 md:py-20">
         <div className="grid gap-12 md:grid-cols-12">
           <div className="md:col-span-5">
-            <Link href="/" className="inline-flex items-center gap-2.5">
-              <span
-                className="grid h-8 w-8 place-items-center rounded-md bg-surface text-accent ring-1 ring-border-strong"
-                aria-hidden
-              >
-                <Stethoscope className="h-4 w-4" />
-              </span>
-              <span className="font-semibold tracking-tight">{site.name}</span>
+            <Link href="/" aria-label={`${site.name} home`}>
+              <Logo size={20} />
             </Link>
             <p className="mt-5 max-w-sm text-sm leading-relaxed text-muted">
               {site.description}

@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Mail, Lock, ArrowRight, Stethoscope } from "lucide-react";
+import { Mail, Lock, ArrowRight } from "lucide-react";
 import { AuthError } from "next-auth";
 import { signIn, auth } from "@/auth";
 import { Button } from "@/components/ui/button";
+import { Logo } from "@/components/logo";
 import { isDbConfigured } from "@/db";
 import { resolvePortalRedirect } from "@/lib/portal-redirect";
 
@@ -73,17 +74,8 @@ export default async function LoginPage({
   return (
     <div className="flex min-h-screen items-center justify-center px-6 py-16">
       <div className="w-full max-w-md">
-        <Link
-          href="/"
-          className="mb-10 inline-flex items-center gap-2.5 text-foreground"
-        >
-          <span
-            className="grid h-8 w-8 place-items-center rounded-md bg-surface text-accent ring-1 ring-border-strong"
-            aria-hidden
-          >
-            <Stethoscope className="h-4 w-4" />
-          </span>
-          <span className="font-semibold tracking-tight">The Code Doctors</span>
+        <Link href="/" aria-label="The Code Doctors home" className="mb-10 inline-block">
+          <Logo size={20} />
         </Link>
 
         <div className="rounded-2xl border border-border-strong bg-surface/60 p-8">

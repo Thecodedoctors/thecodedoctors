@@ -42,7 +42,6 @@ function isPassThrough(pathname: string): boolean {
     pathname.startsWith("/start/") ||
     pathname === "/welcome" ||
     pathname.startsWith("/welcome/") ||
-    pathname.startsWith("/preview/") ||
     pathname === "/favicon.ico" ||
     pathname === "/robots.txt" ||
     pathname === "/sitemap.xml" ||

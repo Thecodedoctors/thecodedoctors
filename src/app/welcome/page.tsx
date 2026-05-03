@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Stethoscope, AlertCircle, ArrowRight } from "lucide-react";
+import { AlertCircle, ArrowRight } from "lucide-react";
 import { auth } from "@/auth";
 import {
   finalizePendingSignupBySessionId,
   signInFromWelcome,
 } from "@/server/onboard-finalize";
 import { Button } from "@/components/ui/button";
+import { Logo } from "@/components/logo";
 import { ADMIN_HOME, APP_HOME } from "@/lib/portal-redirect";
 
 export const metadata: Metadata = {
@@ -74,14 +75,8 @@ export default async function WelcomePage({
 function Success({ email }: { email: string }) {
   return (
     <div className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center px-6 py-16">
-      <Link
-        href="/"
-        className="inline-flex items-center gap-2.5 text-foreground"
-      >
-        <span className="grid h-8 w-8 place-items-center rounded-md bg-surface text-accent ring-1 ring-inset ring-border-strong">
-          <Stethoscope className="h-4 w-4" />
-        </span>
-        <span className="font-semibold tracking-tight">The Code Doctors</span>
+      <Link href="/" aria-label="The Code Doctors home">
+        <Logo size={20} />
       </Link>
 
       <div className="mt-12 w-full rounded-2xl border border-accent/30 bg-accent-soft/20 p-7 text-center">
@@ -146,14 +141,8 @@ function Success({ email }: { email: string }) {
 function Failure({ message }: { message: string }) {
   return (
     <div className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center px-6 py-16">
-      <Link
-        href="/"
-        className="inline-flex items-center gap-2.5 text-foreground"
-      >
-        <span className="grid h-8 w-8 place-items-center rounded-md bg-surface text-accent ring-1 ring-inset ring-border-strong">
-          <Stethoscope className="h-4 w-4" />
-        </span>
-        <span className="font-semibold tracking-tight">The Code Doctors</span>
+      <Link href="/" aria-label="The Code Doctors home">
+        <Logo size={20} />
       </Link>
 
       <div className="mt-12 w-full rounded-2xl border border-signal/30 bg-signal/5 p-7 text-center">

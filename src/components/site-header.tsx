@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { site } from "@/lib/site";
 import { Button } from "@/components/ui/button";
-import { Stethoscope } from "lucide-react";
+import { Logo } from "@/components/logo";
 
 export function SiteHeader() {
   return (
@@ -10,18 +10,8 @@ export function SiteHeader() {
       style={{ viewTransitionName: "site-header" }}
     >
       <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-6 md:px-10">
-        <Link
-          href="/"
-          className="group flex items-center gap-2.5 text-foreground"
-          aria-label={`${site.name} home`}
-        >
-          <span
-            className="grid h-8 w-8 place-items-center rounded-md bg-surface text-accent ring-1 ring-border-strong transition-colors group-hover:ring-accent"
-            aria-hidden
-          >
-            <Stethoscope className="h-4 w-4" />
-          </span>
-          <span className="font-semibold tracking-tight">{site.name}</span>
+        <Link href="/" className="text-foreground" aria-label={`${site.name} home`}>
+          <Logo size={20} />
         </Link>
 
         <nav
