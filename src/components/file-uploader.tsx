@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
-import { Paperclip, Upload, X } from "lucide-react";
+import { Paperclip, Upload, X, AlertCircle } from "lucide-react";
 import { uploadFilesToRequest } from "@/server/files";
 
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -20,11 +20,14 @@ const ALLOWED = [
   "application/zip",
 ];
 
+type Failure = { name: string; reason: string };
+
 export function FileUploader({ requestId }: { requestId: string }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const [picked, setPicked] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [failures, setFailures] = useState<Failure[]>([]);
   const [pending, startTransition] = useTransition();
 
   function pick() {
@@ -33,6 +36,7 @@ export function FileUploader({ requestId }: { requestId: string }) {
 
   function onChange(e: React.ChangeEvent<HTMLInputElement>) {
     setError(null);
+    setFailures([]);
     const files = Array.from(e.target.files ?? []);
     const ok: File[] = [];
     for (const f of files) {
@@ -62,16 +66,32 @@ export function FileUploader({ requestId }: { requestId: string }) {
       pick();
       return;
     }
+    setError(null);
+    setFailures([]);
     const fd = new FormData();
     fd.set("requestId", requestId);
     for (const f of picked) fd.append("files", f);
     startTransition(async () => {
       try {
-        await uploadFilesToRequest(fd);
-        setPicked([]);
-        if (inputRef.current) inputRef.current.value = "";
-      } catch {
-        setError("Upload failed. Try again.");
+        const result = await uploadFilesToRequest(fd);
+        // Keep only the files that failed in the picker so the user can
+        // edit / retry; clear the rest.
+        if (result.failed.length > 0) {
+          setFailures(result.failed);
+          const failedNames = new Set(result.failed.map((f) => f.name));
+          setPicked((p) => p.filter((f) => failedNames.has(f.name)));
+        } else {
+          setPicked([]);
+        }
+        if (inputRef.current && result.failed.length === 0) {
+          inputRef.current.value = "";
+        }
+      } catch (e) {
+        setError(
+          e instanceof Error
+            ? `Upload failed: ${e.message}`
+            : "Upload failed. Try again."
+        );
       }
     });
   }
@@ -151,6 +171,26 @@ export function FileUploader({ requestId }: { requestId: string }) {
         </>
       )}
       {error && <p className="text-xs text-signal">{error}</p>}
+      {failures.length > 0 && (
+        <div className="rounded-xl border border-signal/30 bg-signal/5 p-4">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-signal" />
+            <div className="min-w-0 flex-1">
+              <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-signal">
+                {failures.length} file{failures.length === 1 ? "" : "s"} didn&apos;t upload
+              </p>
+              <ul className="mt-2 space-y-1 text-xs text-foreground">
+                {failures.map((f, i) => (
+                  <li key={i} className="break-all">
+                    <span className="font-mono text-muted">{f.name}</span>{" "}
+                    — {f.reason}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
       <p className="text-[11px] text-muted">
         Up to 10 files, 10 MB each. Images, PDFs, plain text, JSON, ZIP.
       </p>

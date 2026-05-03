@@ -83,33 +83,71 @@ export async function listFilesForRequest(requestId: string): Promise<FileRow[]>
    Upload — server action
    ──────────────────────────────────────────────────────────────────────── */
 
-export async function uploadFilesToRequest(formData: FormData): Promise<void> {
+export type UploadResult = {
+  uploaded: number;
+  failed: { name: string; reason: string }[];
+};
+
+/**
+ * Per-file outcome is returned to the client so failures are visible
+ * instead of silently swallowed. Server-side failures (R2 binding
+ * missing, throttling, oversize, rejected MIME, etc.) all produce a
+ * `failed` row with a human-readable reason.
+ */
+export async function uploadFilesToRequest(
+  formData: FormData
+): Promise<UploadResult> {
   const session = await requireUser();
   const requestId = String(formData.get("requestId") ?? "");
-  if (!requestId) return;
+  const result: UploadResult = { uploaded: 0, failed: [] };
+  if (!requestId) {
+    result.failed.push({ name: "(form)", reason: "Missing requestId." });
+    return result;
+  }
 
   const allowed = await canAccessRequest(session.user.id, session.user.role, requestId);
-  if (!allowed) return;
+  if (!allowed) {
+    result.failed.push({ name: "(form)", reason: "You don't have access to this request." });
+    return result;
+  }
 
   const bucket = await getUploadsBucket();
   if (!bucket) {
-    console.error("[files] R2 binding unavailable — upload skipped");
-    return;
+    console.error("[files] R2 binding unavailable");
+    result.failed.push({
+      name: "(server)",
+      reason: "File storage is unavailable. Please try again in a minute.",
+    });
+    return result;
   }
 
   const fileEntries = formData.getAll("files");
-  let uploadCount = 0;
 
   for (const entry of fileEntries) {
-    if (uploadCount >= MAX_FILES_PER_UPLOAD) break;
+    if (result.uploaded >= MAX_FILES_PER_UPLOAD) {
+      result.failed.push({
+        name: entry instanceof File ? entry.name : "(file)",
+        reason: `Skipped — max ${MAX_FILES_PER_UPLOAD} files per upload.`,
+      });
+      continue;
+    }
     if (!(entry instanceof File)) continue;
-    if (entry.size === 0) continue;
+    if (entry.size === 0) {
+      result.failed.push({ name: entry.name, reason: "Empty file." });
+      continue;
+    }
     if (entry.size > MAX_FILE_BYTES) {
-      console.warn("[files] rejected oversized", entry.name, entry.size);
+      result.failed.push({
+        name: entry.name,
+        reason: `Too big (${humanBytes(entry.size)}, 10 MB max).`,
+      });
       continue;
     }
     if (!isAllowedType(entry.type)) {
-      console.warn("[files] rejected type", entry.name, entry.type);
+      result.failed.push({
+        name: entry.name,
+        reason: `File type not supported (${entry.type || "unknown"}).`,
+      });
       continue;
     }
 
@@ -137,7 +175,7 @@ export async function uploadFilesToRequest(formData: FormData): Promise<void> {
         contentType: entry.type || "application/octet-stream",
         storageKey,
       });
-      uploadCount++;
+      result.uploaded++;
 
       await recordAudit({
         actorUserId: session.user.id,
@@ -147,12 +185,15 @@ export async function uploadFilesToRequest(formData: FormData): Promise<void> {
         after: { fileId, filename: safeName, sizeBytes: entry.size },
       });
     } catch (err) {
+      const reason =
+        err instanceof Error ? err.message : "Upload failed (unknown error).";
       console.error("[files] upload failed", entry.name, err);
+      result.failed.push({ name: entry.name, reason });
     }
   }
 
   // Touch the request so the activity feed reflects the upload
-  if (uploadCount > 0) {
+  if (result.uploaded > 0) {
     await db()
       .update(requests)
       .set({ updatedAt: new Date() })
@@ -161,6 +202,7 @@ export async function uploadFilesToRequest(formData: FormData): Promise<void> {
 
   revalidatePath(`/dashboard/requests/${requestId}`);
   revalidatePath(`/admin/requests/${requestId}`);
+  return result;
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -245,4 +287,10 @@ function sanitizeFilename(name: string): string {
     .replace(/[^\w.\-]/g, "_")
     .replace(/_+/g, "_")
     .slice(0, 120) || "untitled";
+}
+
+function humanBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} kB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
