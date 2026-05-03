@@ -13,6 +13,39 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
+/**
+ * Top-level Server Action — must NOT close over outer scope.
+ * Cloudflare Workers can fail to reconstruct closures, surfacing as a 404
+ * "Server action not found" when the form is submitted. Reads `next` from
+ * a hidden form field instead of capturing it from the page render.
+ */
+async function loginAction(formData: FormData): Promise<void> {
+  "use server";
+  const email = String(formData.get("email") ?? "").trim();
+  const password = String(formData.get("password") ?? "");
+  const next = String(formData.get("next") ?? "/dashboard") || "/dashboard";
+
+  const back = (err: string) =>
+    redirect(
+      `/login?error=${err}&email=${encodeURIComponent(email)}&next=${encodeURIComponent(next)}`
+    );
+
+  if (!email) back("MissingEmail");
+  if (password.length < 8) back("ShortPassword");
+
+  try {
+    await signIn("credentials", {
+      email,
+      password,
+      redirectTo: next,
+    });
+  } catch (err) {
+    // Auth.js uses NEXT_REDIRECT on success; let that propagate.
+    if (err instanceof AuthError) back("Credentials");
+    throw err;
+  }
+}
+
 type SearchParams = Promise<{
   next?: string;
   error?: string;
@@ -74,31 +107,8 @@ export default async function LoginPage({
             </div>
           )}
 
-          <form
-            action={async (formData) => {
-              "use server";
-              const email = String(formData.get("email") ?? "").trim();
-              const password = String(formData.get("password") ?? "");
-              const back = (err: string) =>
-                redirect(
-                  `/login?error=${err}&email=${encodeURIComponent(email)}&next=${encodeURIComponent(next)}`
-                );
-              if (!email) back("MissingEmail");
-              if (password.length < 8) back("ShortPassword");
-              try {
-                await signIn("credentials", {
-                  email,
-                  password,
-                  redirectTo: next,
-                });
-              } catch (err) {
-                // Auth.js uses NEXT_REDIRECT on success; let that propagate.
-                if (err instanceof AuthError) back("Credentials");
-                throw err;
-              }
-            }}
-            className="mt-6 space-y-3"
-          >
+          <form action={loginAction} className="mt-6 space-y-3">
+            <input type="hidden" name="next" value={next} />
             <label className="flex items-center gap-3 rounded-xl bg-background px-4 py-3 ring-1 ring-inset ring-border focus-within:ring-accent">
               <Mail className="h-4 w-4 shrink-0 text-accent" />
               <input
