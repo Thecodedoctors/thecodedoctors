@@ -89,6 +89,57 @@ export default function LogoPreviewPage() {
             <LogoF size="header" />
             <LogoF size="square" />
           </Concept>
+
+          <div className="rounded-2xl border border-accent/30 bg-accent-soft/20 p-5">
+            <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-accent">
+              &lt;~&gt; · founder direction
+            </p>
+            <p className="mt-2 text-sm text-foreground">
+              Angle brackets read as <span className="font-mono">code tags</span>;
+              the tilde inside reads as a <span className="font-mono">pulse</span>.
+              Code containing a heartbeat. Below: four ways to land it.
+            </p>
+          </div>
+
+          <Concept
+            id="G"
+            name="<~> mark + wordmark"
+            note="The symbol set in mono font as a leading mark, with the wordmark in sans beside it. Most balanced — the symbol carries the meaning, the words carry the name."
+          >
+            <LogoG size="hero" />
+            <LogoG size="header" />
+            <LogoG size="square" />
+          </Concept>
+
+          <Concept
+            id="H"
+            name="<~> in a teal square"
+            note="The symbol locked into a teal-filled square. Doubles as favicon / app icon out of the box, like Concept E but with meaning baked in."
+          >
+            <LogoH size="hero" />
+            <LogoH size="header" />
+            <LogoH size="square" />
+          </Concept>
+
+          <Concept
+            id="I"
+            name="<~> standalone, wordmark as caption"
+            note="The symbol blown up huge, wordmark sized down to a serif-style caption underneath. Most distinctive of the four — would be unmistakable in OG cards and presentations."
+          >
+            <LogoI size="hero" />
+            <LogoI size="header" />
+            <LogoI size="square" />
+          </Concept>
+
+          <Concept
+            id="J"
+            name="Wordmark · trailing <~>"
+            note="The symbol used as punctuation after the wordmark — replacing the period in Concept A. The mark stays close to the words; reads cleanly in body text."
+          >
+            <LogoJ size="hero" />
+            <LogoJ size="header" />
+            <LogoJ size="square" />
+          </Concept>
         </div>
 
         <footer className="mt-24 rounded-2xl border border-border bg-surface/30 p-6 text-sm text-muted">
@@ -434,6 +485,171 @@ function LogoF({ size }: { size: "hero" | "header" | "square" }) {
           className={`font-mono ${subFontSize} uppercase tracking-[0.24em] text-muted`}
         >
           the code doctors
+        </span>
+      </div>
+    </Cell>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Concept G — <~> mark + wordmark.
+   The brackets are foreground (ink), the ~ is teal so the pulse pops.
+   ──────────────────────────────────────────────────────────────────────── */
+
+function PulseGlyph({
+  size,
+  bracketColor,
+}: {
+  size: "hero" | "header" | "square";
+  bracketColor?: string;
+}) {
+  const fontSize =
+    size === "hero" ? "text-[40px]" : size === "header" ? "text-[18px]" : "text-[15px]";
+  return (
+    <span
+      className={`font-mono ${fontSize} font-semibold leading-none tracking-[-0.03em]`}
+      style={{ color: bracketColor ?? "var(--fg, #f2f4f7)" }}
+    >
+      &lt;<span className="text-accent">~</span>&gt;
+    </span>
+  );
+}
+
+function LogoG({ size }: { size: "hero" | "header" | "square" }) {
+  if (size === "square") {
+    return (
+      <Cell size={size}>
+        <PulseGlyph size="square" />
+      </Cell>
+    );
+  }
+  const fontSize = size === "hero" ? "text-[40px]" : "text-[18px]";
+  const gap = size === "hero" ? "gap-3" : "gap-2";
+  return (
+    <Cell size={size}>
+      <div className={`flex items-baseline ${gap}`}>
+        <PulseGlyph size={size} />
+        <span
+          className={`font-sans ${fontSize} font-semibold leading-none tracking-[-0.02em] [color:var(--fg,#f2f4f7)]`}
+        >
+          the code doctors
+        </span>
+      </div>
+    </Cell>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Concept H — <~> locked into a teal-filled square.
+   Background is teal; brackets + tilde are ink so they read on the fill.
+   ──────────────────────────────────────────────────────────────────────── */
+
+function PulseSquare({ px }: { px: number }) {
+  return (
+    <span
+      className="grid place-items-center rounded-[6px] bg-accent leading-none tracking-tight"
+      style={{
+        width: px,
+        height: px,
+        fontSize: Math.round(px * 0.5),
+        color: "#0a0e13",
+        fontFamily: "var(--font-mono), ui-monospace, monospace",
+        fontWeight: 600,
+      }}
+      aria-hidden
+    >
+      &lt;~&gt;
+    </span>
+  );
+}
+
+function LogoH({ size }: { size: "hero" | "header" | "square" }) {
+  if (size === "square") {
+    return (
+      <Cell size={size}>
+        <PulseSquare px={32} />
+      </Cell>
+    );
+  }
+  const sq = size === "hero" ? 56 : 28;
+  const fontSize = size === "hero" ? "text-[40px]" : "text-[18px]";
+  const gap = size === "hero" ? "gap-4" : "gap-2";
+  return (
+    <Cell size={size}>
+      <div className={`flex items-center ${gap}`}>
+        <PulseSquare px={sq} />
+        <span
+          className={`font-sans ${fontSize} font-semibold leading-none tracking-[-0.02em] [color:var(--fg,#f2f4f7)]`}
+        >
+          the code doctors
+        </span>
+      </div>
+    </Cell>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Concept I — <~> blown up huge, wordmark below as caption.
+   ──────────────────────────────────────────────────────────────────────── */
+
+function LogoI({ size }: { size: "hero" | "header" | "square" }) {
+  if (size === "square") {
+    return (
+      <Cell size={size}>
+        <PulseGlyph size="square" />
+      </Cell>
+    );
+  }
+  const fontSize = size === "hero" ? "text-[88px]" : "text-[32px]";
+  const subFontSize = size === "hero" ? "text-sm" : "text-[10px]";
+  return (
+    <Cell size={size}>
+      <div className="flex flex-col items-center gap-2">
+        <span
+          className={`font-mono ${fontSize} font-semibold leading-none tracking-[-0.05em] [color:var(--fg,#f2f4f7)]`}
+        >
+          &lt;<span className="text-accent">~</span>&gt;
+        </span>
+        <span
+          className={`font-mono ${subFontSize} uppercase tracking-[0.24em] text-muted`}
+        >
+          the code doctors
+        </span>
+      </div>
+    </Cell>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Concept J — wordmark with trailing <~> as punctuation.
+   ──────────────────────────────────────────────────────────────────────── */
+
+function LogoJ({ size }: { size: "hero" | "header" | "square" }) {
+  if (size === "square") {
+    return (
+      <Cell size={size}>
+        <span className="font-sans text-[15px] font-semibold leading-none tracking-tight [color:var(--fg,#f2f4f7)]">
+          tcd
+          <span className="ml-0.5 font-mono text-accent">&lt;~&gt;</span>
+        </span>
+      </Cell>
+    );
+  }
+  const fontSize = size === "hero" ? "text-[40px]" : "text-[18px]";
+  const markSize = size === "hero" ? "text-[28px]" : "text-[14px]";
+  const gap = size === "hero" ? "gap-2" : "gap-1.5";
+  return (
+    <Cell size={size}>
+      <div className={`flex items-baseline ${gap}`}>
+        <span
+          className={`font-sans ${fontSize} font-semibold leading-none tracking-[-0.02em] [color:var(--fg,#f2f4f7)]`}
+        >
+          the code doctors
+        </span>
+        <span
+          className={`font-mono ${markSize} font-semibold leading-none tracking-[-0.03em] [color:var(--fg,#f2f4f7)]`}
+        >
+          &lt;<span className="text-accent">~</span>&gt;
         </span>
       </div>
     </Cell>
