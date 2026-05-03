@@ -27,12 +27,13 @@ const PLANS = {
     price: "$900",
     cadence: "per month",
     description:
-      "Two doctor-hours per week, 24/7 monitoring, weekly health check, security patches.",
+      "Whatever fixes and edits your site needs, 24/7 monitoring, weekly health check, security patches — flat fee.",
     features: [
       "Same doctor every visit",
       "24/7 uptime + security monitoring",
-      "Two prescription hours / week",
+      "Edits and fixes — whatever your site needs",
       "Direct messaging with your doctor",
+      "Monthly report from your doctor",
     ],
   },
   premium: {
@@ -40,10 +41,10 @@ const PLANS = {
     price: "$2,400",
     cadence: "per month",
     description:
-      "Five doctor-hours per week, priority response, dedicated security review, performance budget enforcement.",
+      "Active treatment, priority response, dedicated security review, performance budget enforcement.",
     features: [
       "Everything in General Care",
-      "Five prescription hours / week",
+      "Active improvements — we plan, you approve",
       "Priority same-day response",
       "Quarterly accessibility + security audits",
       "Performance budget enforcement on every change",

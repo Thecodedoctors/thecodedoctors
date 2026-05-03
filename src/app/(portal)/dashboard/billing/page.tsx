@@ -47,10 +47,10 @@ const PLAN_FEATURES: Record<
     price: "$900",
     priceCents: 90000,
     features: [
-      "Two doctor-hours per week",
+      "Edits and fixes — whatever your site needs",
       "24/7 uptime + security monitoring",
       "Direct messaging with your doctor",
-      "Quarterly checkup report",
+      "Monthly report from your doctor",
     ],
   },
   premium: {
@@ -58,7 +58,7 @@ const PLAN_FEATURES: Record<
     price: "$2,400",
     priceCents: 240000,
     features: [
-      "Five doctor-hours per week",
+      "Active improvements — we plan, you approve",
       "Priority same-day response",
       "Quarterly accessibility + security audits",
       "Performance budget enforcement on every change",

@@ -37,9 +37,9 @@ const plans: Plan[] = [
     features: [
       "Managed hosting & SSL",
       "Daily backups",
-      "Up to 2 hours of edits per month",
+      "Edits and fixes — whatever your site needs",
       "Uptime monitoring & alerts",
-      "Quarterly checkup report",
+      "Monthly report from your doctor",
     ],
     ctaLabel: "Start General Care",
     ctaHref: "/start?plan=general",
@@ -52,7 +52,7 @@ const plans: Plan[] = [
       "Active treatment. We make your site better every month, on your behalf.",
     features: [
       "Everything in General Care",
-      "Up to 8 hours of treatment per month",
+      "Active improvements — we plan, you approve",
       "Performance & security hardening",
       "Monthly improvements roadmap",
       "Same-day emergency response",
