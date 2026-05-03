@@ -229,26 +229,28 @@ export default async function TeamPage() {
         )}
       </section>
 
-      {/* Empty state callout for solo founders */}
-      {headline.totalStaff <= 1 && (
-        <div className="mt-12 rounded-2xl border border-border bg-surface/40 p-6">
-          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-accent">
-            Adding doctors
-          </p>
-          <h3 className="mt-2 text-base font-semibold tracking-tight">
-            Promotion is SQL-only for now
-          </h3>
-          <p className="mt-2 text-sm text-muted leading-relaxed">
-            Until the staff onboarding flow ships in Phase 5, promoting a
-            patient to <span className="font-mono">doctor</span> /{" "}
-            <span className="font-mono">senior_doctor</span> is a manual{" "}
-            <span className="font-mono">UPDATE &quot;user&quot; SET role = &apos;doctor&apos; WHERE
-            email = &apos;…&apos;</span>{" "}
-            against the database. Mandatory TOTP enforcement lands at the
-            same time.
-          </p>
-        </div>
-      )}
+      {/* Adding doctors — points founders at the onboarding flow. The
+          settings page itself is founder-gated, so non-founders won't
+          see anything when they click through. */}
+      <div className="mt-12 rounded-2xl border border-border bg-surface/40 p-6">
+        <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-accent">
+          Adding doctors
+        </p>
+        <h3 className="mt-2 text-base font-semibold tracking-tight">
+          Add a doctor or grant read-only access
+        </h3>
+        <p className="mt-2 text-sm text-muted leading-relaxed">
+          Use{" "}
+          <a
+            href="/settings/staff"
+            className="text-foreground underline decoration-border-strong underline-offset-4 hover:decoration-accent"
+          >
+            Settings → Staff
+          </a>{" "}
+          to invite by email or promote an existing user. Founder-only;
+          founder elevations remain SQL-only by design.
+        </p>
+      </div>
     </Section>
   );
 }
