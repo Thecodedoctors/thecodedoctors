@@ -6,7 +6,12 @@ import { redirect } from "next/navigation";
 import { hashPassword } from "@/lib/password";
 import { encryptAutoSigninPassword } from "@/lib/auto-signin-crypto";
 import { findUserByReferralCode } from "@/server/referrals";
-import { getStripe, priceIdFor } from "@/lib/stripe";
+import {
+  getStripe,
+  priceIdFor,
+  priceIdForCheckup,
+  type BillingInterval,
+} from "@/lib/stripe";
 import { site } from "@/lib/site";
 import { normalizeWebsiteUrl } from "@/lib/url";
 
@@ -14,26 +19,25 @@ import { normalizeWebsiteUrl } from "@/lib/url";
  * Commitment-driven sign-up paths. The /login page does NOT create
  * accounts — only successful Stripe Checkout creates them.
  *
- * Both /trial and /start follow the same shape:
+ * Three entry shapes share the same internals:
+ *   - /trial         → 7-day free trial of General Care (Checkout in
+ *                      subscription mode with trial_period_days=7)
+ *   - /start (paid)  → General or Premium, monthly OR yearly billing
+ *                      (Checkout in subscription mode, no trial)
+ *   - /start?plan=checkup → one-time $599 deep audit (Checkout in
+ *                      `payment` mode — no recurring billing)
+ *
+ * All three:
  *   1. Validate the form
- *   2. Check the email is unused (defense — Stripe Checkout would
- *      otherwise still complete and we'd discover the conflict on
- *      finalize, refunding the user is messy)
- *   3. Hash the password and write a `pending_signup` row containing
- *      every detail needed to finalize the account, keyed by an
+ *   2. Check the email is unused
+ *   3. Hash the password and write a `pending_signup` row keyed by an
  *      opaque token. Expires in 24h.
- *   4. Create a Stripe Checkout Session with the token in
- *      subscription_data.metadata so finalize can find the row.
- *      `customer_email` pre-fills the email field on Stripe's page.
+ *   4. Create a Stripe Checkout Session with the token in metadata.
  *   5. redirect() to checkout.stripe.com/...
  *
- * After successful Checkout, the public /welcome page (not auth-gated
- * because no account exists yet) reads session_id, retrieves the
- * Checkout session from Stripe, calls finalizePendingSignup, then
- * signs the new user in. The webhook also calls finalize as a safety
- * net for the browser-closed case — finalize is idempotent.
- *
- * Trial: 7 days. /start has no trial (immediate billing).
+ * After successful Checkout, /welcome reads session_id, calls finalize,
+ * then signs the new user in. The webhook also calls finalize as a
+ * safety net for the browser-closed case — finalize is idempotent.
  */
 
 export type OnboardResult =
@@ -43,6 +47,7 @@ export type OnboardResult =
 const TRIAL_DAYS = 7;
 const PENDING_TTL_HOURS = 24;
 const ALLOWED_PAID_PLANS = new Set(["general", "premium"]);
+const ALLOWED_INTERVALS = new Set(["monthly", "yearly"]);
 
 /* ──────────────────────────────────────────────────────────────────────────
    Free trial — entered from /checkup results
@@ -62,16 +67,17 @@ export async function startTrial(
   });
   if (!token.ok) return token;
 
-  return startCheckout({
+  return startSubscriptionCheckout({
     email: validation.data.email,
     pendingSignupToken: token.token,
     plan: "general",
+    interval: "monthly",
     trialPeriodDays: TRIAL_DAYS,
   });
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
-   Paid plan — entered from /plans
+   Paid plan — entered from /start
    ──────────────────────────────────────────────────────────────────────── */
 
 export async function startWithPlan(
@@ -84,6 +90,12 @@ export async function startWithPlan(
   }
   const plan = planRaw as "general" | "premium";
 
+  const intervalRaw = String(formData.get("interval") ?? "monthly");
+  if (!ALLOWED_INTERVALS.has(intervalRaw)) {
+    return { ok: false, error: "Pick monthly or yearly billing." };
+  }
+  const interval = intervalRaw as BillingInterval;
+
   const validation = await validateOnboardForm(formData);
   if (!validation.ok) return validation;
 
@@ -94,12 +106,35 @@ export async function startWithPlan(
   });
   if (!token.ok) return token;
 
-  return startCheckout({
+  return startSubscriptionCheckout({
     email: validation.data.email,
     pendingSignupToken: token.token,
     plan,
-    // No trial on /start — user explicitly picked a paid plan, billed
-    // immediately.
+    interval,
+  });
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   The Checkup — one-time $599 deep audit
+   ──────────────────────────────────────────────────────────────────────── */
+
+export async function startWithCheckup(
+  _prev: OnboardResult | null,
+  formData: FormData
+): Promise<OnboardResult> {
+  const validation = await validateOnboardForm(formData);
+  if (!validation.ok) return validation;
+
+  const token = await stashPendingSignup({
+    ...validation.data,
+    plan: "checkup",
+    signupSource: "checkup",
+  });
+  if (!token.ok) return token;
+
+  return startCheckupCheckout({
+    email: validation.data.email,
+    pendingSignupToken: token.token,
   });
 }
 
@@ -176,8 +211,8 @@ async function stashPendingSignup(args: {
   password: string;
   businessName: string;
   websiteUrl: string;
-  plan: "general" | "premium";
-  signupSource: "trial" | "plan";
+  plan: "general" | "premium" | "checkup";
+  signupSource: "trial" | "plan" | "checkup";
   referredByCode: string | null;
 }): Promise<{ ok: true; token: string } | { ok: false; error: string }> {
   try {
@@ -215,14 +250,15 @@ async function stashPendingSignup(args: {
   }
 }
 
-async function startCheckout(args: {
+async function startSubscriptionCheckout(args: {
   email: string;
   pendingSignupToken: string;
   plan: "general" | "premium";
+  interval: BillingInterval;
   trialPeriodDays?: number;
 }): Promise<OnboardResult> {
   const stripe = getStripe();
-  const priceId = priceIdFor(args.plan);
+  const priceId = priceIdFor(args.plan, args.interval);
   if (!stripe || !priceId) {
     return {
       ok: false,
@@ -235,13 +271,14 @@ async function startCheckout(args: {
     customer_email: args.email,
     line_items: [{ price: priceId, quantity: 1 }],
     success_url: `${site.url}/welcome?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${site.url}/trial?canceled=1`,
+    cancel_url: `${site.url}/start?canceled=1`,
     allow_promotion_codes: true,
     billing_address_collection: "auto",
     subscription_data: {
       metadata: {
         pendingSignupToken: args.pendingSignupToken,
         plan: args.plan,
+        interval: args.interval,
       },
       ...(args.trialPeriodDays
         ? { trial_period_days: args.trialPeriodDays }
@@ -250,6 +287,55 @@ async function startCheckout(args: {
     metadata: {
       pendingSignupToken: args.pendingSignupToken,
       plan: args.plan,
+      interval: args.interval,
+    },
+  });
+
+  if (!checkout.url) {
+    return {
+      ok: false,
+      error: "Stripe didn't return a checkout URL. Try again.",
+    };
+  }
+  redirect(checkout.url);
+}
+
+async function startCheckupCheckout(args: {
+  email: string;
+  pendingSignupToken: string;
+}): Promise<OnboardResult> {
+  const stripe = getStripe();
+  const priceId = priceIdForCheckup();
+  if (!stripe || !priceId) {
+    return {
+      ok: false,
+      error: "Checkup purchases are temporarily unavailable. Try again shortly.",
+    };
+  }
+
+  // `payment` mode = one-time charge, no subscription. Stripe still
+  // creates a Customer record for us so future upgrades to ongoing care
+  // can reuse the saved card.
+  const checkout = await stripe.checkout.sessions.create({
+    mode: "payment",
+    customer_email: args.email,
+    line_items: [{ price: priceId, quantity: 1 }],
+    success_url: `${site.url}/welcome?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${site.url}/start?plan=checkup&canceled=1`,
+    allow_promotion_codes: true,
+    billing_address_collection: "auto",
+    // Save the customer + payment intent so we can issue refunds later
+    // (the money-back guarantee on Checkup) without manual lookup.
+    customer_creation: "always",
+    payment_intent_data: {
+      metadata: {
+        pendingSignupToken: args.pendingSignupToken,
+        plan: "checkup",
+      },
+    },
+    metadata: {
+      pendingSignupToken: args.pendingSignupToken,
+      plan: "checkup",
     },
   });
 

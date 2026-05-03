@@ -6,7 +6,13 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth-helpers";
 import { getOrCreateClientForUser } from "@/lib/clients";
-import { getStripe, priceIdFor, isStripeConfigured } from "@/lib/stripe";
+import {
+  getStripe,
+  priceIdFor,
+  isStripeConfigured,
+  planFromPriceId,
+  type BillingInterval,
+} from "@/lib/stripe";
 import { site } from "@/lib/site";
 import { recordAudit } from "@/server/audit";
 
@@ -33,6 +39,9 @@ export type BillingState = {
   configured: boolean;
   plan: string;
   status: string;
+  /** Derived from the active Stripe Price ID — `null` if the client has
+   *  no subscription yet (Checkup-only or first-time visitor). */
+  interval: BillingInterval | null;
   trialEndsAt: Date | null;
   /** Pre-computed on the server so the page render stays pure. */
   trialPhase: "none" | "active" | "ended";
@@ -58,10 +67,15 @@ export async function getBillingStateForCurrentUser(): Promise<BillingState> {
     trialPhase = trialEndsAt.getTime() > Date.now() ? "active" : "ended";
   }
 
+  const interval = client.stripeSubscriptionId
+    ? planFromPriceId(client.stripePriceId).interval
+    : null;
+
   return {
     configured: isStripeConfigured(),
     plan: client.plan,
     status: client.status,
+    interval,
     trialEndsAt,
     trialPhase,
     hasSubscription: Boolean(client.stripeSubscriptionId),
@@ -91,8 +105,12 @@ export async function startCheckoutForCurrentUser(
   const planRaw = String(formData.get("plan") ?? "general");
   const plan: PlanKey = planRaw === "premium" ? "premium" : "general";
 
+  const intervalRaw = String(formData.get("interval") ?? "monthly");
+  const interval: BillingInterval =
+    intervalRaw === "yearly" ? "yearly" : "monthly";
+
   const stripe = getStripe();
-  const priceId = priceIdFor(plan);
+  const priceId = priceIdFor(plan, interval);
   if (!stripe || !priceId) {
     throw new Error("Stripe is not configured.");
   }
@@ -134,9 +152,9 @@ export async function startCheckoutForCurrentUser(
     allow_promotion_codes: true,
     billing_address_collection: "auto",
     subscription_data: {
-      metadata: { clientId: client.id, plan },
+      metadata: { clientId: client.id, plan, interval },
     },
-    metadata: { clientId: client.id, plan },
+    metadata: { clientId: client.id, plan, interval },
   });
 
   await recordAudit({
@@ -144,7 +162,7 @@ export async function startCheckoutForCurrentUser(
     action: "billing.checkout_started",
     targetType: "client",
     targetId: client.id,
-    after: { plan, sessionId: checkoutSession.id },
+    after: { plan, interval, sessionId: checkoutSession.id },
   });
 
   if (!checkoutSession.url) {
@@ -172,8 +190,12 @@ export async function upgradeSubscriptionForCurrentUser(
   }
   const plan: PlanKey = planRaw;
 
+  const intervalRaw = String(formData.get("interval") ?? "monthly");
+  const interval: BillingInterval =
+    intervalRaw === "yearly" ? "yearly" : "monthly";
+
   const stripe = getStripe();
-  const newPriceId = priceIdFor(plan);
+  const newPriceId = priceIdFor(plan, interval);
   if (!stripe || !newPriceId) {
     throw new Error("Stripe is not configured.");
   }
@@ -188,11 +210,14 @@ export async function upgradeSubscriptionForCurrentUser(
     redirect("/dashboard/billing?upgrade=no-subscription");
   }
 
-  // Refuse same-or-lower tier changes.
+  // Refuse downgrades; the Stripe portal handles those. Same-tier
+  // changes are allowed when it's a billing-cadence switch (monthly
+  // ↔ yearly) but we still block no-op same-price-id changes below
+  // after we've fetched the live subscription.
   const currentPlan = client.plan as PlanKey | string;
   const currentRank = PLAN_RANK[currentPlan as PlanKey] ?? 0;
   const targetRank = PLAN_RANK[plan];
-  if (targetRank <= currentRank) {
+  if (targetRank < currentRank) {
     redirect("/dashboard/billing?upgrade=not-higher");
   }
 
@@ -201,8 +226,14 @@ export async function upgradeSubscriptionForCurrentUser(
     client.stripeSubscriptionId
   );
   const currentItemId = subscription.items.data[0]?.id;
+  const currentPriceId = subscription.items.data[0]?.price?.id ?? null;
   if (!currentItemId) {
     throw new Error("Existing subscription has no line items.");
+  }
+  // Block no-op changes (same plan + same interval). Switching cadence
+  // at the same tier is allowed and falls through to update().
+  if (currentPriceId === newPriceId) {
+    redirect("/dashboard/billing?upgrade=not-higher");
   }
 
   const updated = await stripe.subscriptions.update(
@@ -212,7 +243,7 @@ export async function upgradeSubscriptionForCurrentUser(
       // Charge the prorated difference on the next invoice line cycle
       // so the customer pays the delta, not a full second month.
       proration_behavior: "create_prorations",
-      metadata: { clientId: client.id, plan },
+      metadata: { clientId: client.id, plan, interval },
     }
   );
 
@@ -222,7 +253,7 @@ export async function upgradeSubscriptionForCurrentUser(
     targetType: "client",
     targetId: client.id,
     before: { plan: currentPlan },
-    after: { plan, subscriptionId: updated.id },
+    after: { plan, interval, subscriptionId: updated.id },
   });
 
   // The webhook (`customer.subscription.updated`) is the source of truth

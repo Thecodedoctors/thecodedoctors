@@ -39,6 +39,9 @@ export const site = {
     legal: [
       { href: "/privacy", label: "Privacy" },
       { href: "/terms", label: "Terms" },
+      { href: "/refund-policy", label: "Refunds" },
+      { href: "/acceptable-use", label: "Acceptable use" },
+      { href: "/sla", label: "Service levels" },
       { href: "/security", label: "Security" },
       { href: "/cookies", label: "Cookies" },
     ],

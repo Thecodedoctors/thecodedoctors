@@ -147,11 +147,15 @@ export async function finalizePendingSignupBySessionId(
         name: pending.businessName,
         websiteUrl: pending.websiteUrl,
         primaryUserId: userId,
-        plan: pending.plan as "general" | "premium",
+        plan: pending.plan as "general" | "premium" | "checkup",
         status: "active",
         signupSource: pending.signupSource,
         referredByCode: pending.referredByCode,
         stripeCustomerId: customerId,
+        // Subscriptions populate stripeSubscriptionId; one-time Checkup
+        // purchases stay null here (no recurring billing). The webhook
+        // for `customer.subscription.updated` later populates this for
+        // the recurring plans.
         stripeSubscriptionId: subscriptionId,
         // trialEndsAt + currentPeriodEnd will populate on the
         // subsequent customer.subscription.updated webhook event.
@@ -194,7 +198,9 @@ export async function finalizePendingSignupBySessionId(
     action:
       pending.signupSource === "trial"
         ? "client.trial_started"
-        : "client.signed_up",
+        : pending.signupSource === "checkup"
+          ? "client.checkup_purchased"
+          : "client.signed_up",
     targetType: "client",
     targetId: clientId,
     after: {

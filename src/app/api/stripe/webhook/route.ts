@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type Stripe from "stripe";
 import { db, clients, webhookEvents } from "@/db";
 import { eq } from "drizzle-orm";
-import { getStripe } from "@/lib/stripe";
+import { getStripe, planFromPriceId } from "@/lib/stripe";
 import { recordAudit } from "@/server/audit";
 import {
   dispatchEvent,
@@ -222,7 +222,7 @@ async function applySubscriptionUpdate(
 ) {
   const periodEnd = new Date(subType.current_period_end * 1000);
   const priceId = item?.price.id ?? null;
-  const monthlyCents = item?.price.unit_amount ?? 0;
+  const billedAmount = item?.price.unit_amount ?? 0;
   const isActive = sub.status === "active" || sub.status === "trialing";
 
   // Trial state syncs from Stripe — trial_end is null on paid plans.
@@ -230,14 +230,14 @@ async function applySubscriptionUpdate(
     ? new Date(subType.trial_end * 1000)
     : null;
 
-  // Map price ID back to our plan label so /admin and the patient hub
-  // show the right tier without us having to maintain a manual mirror.
-  let planUpdate: { plan: "general" | "premium" } | Record<string, never> = {};
-  if (priceId === process.env.STRIPE_PRICE_PREMIUM) {
-    planUpdate = { plan: "premium" };
-  } else if (priceId === process.env.STRIPE_PRICE_GENERAL) {
-    planUpdate = { plan: "general" };
-  }
+  // Map price ID back to our plan label + interval. Yearly prices
+  // need their unit amount divided by 12 to compute monthly-recurring
+  // revenue (the dashboard + admin both display $/mo, never $/yr).
+  const { plan, interval } = planFromPriceId(priceId);
+  const monthlyCents =
+    interval === "yearly" ? Math.round(billedAmount / 12) : billedAmount;
+  const planUpdate: { plan: "general" | "premium" } =
+    plan === "premium" ? { plan: "premium" } : { plan: "general" };
 
   await db()
     .update(clients)
@@ -263,6 +263,8 @@ async function applySubscriptionUpdate(
       stripeStatus: sub.status,
       cancelAtPeriodEnd: subType.cancel_at_period_end,
       priceId,
+      plan,
+      interval,
       trialing: Boolean(trialEndsAt && trialEndsAt.getTime() > Date.now()),
     },
   });

@@ -6,15 +6,17 @@ import { Section } from "@/components/ui/section";
 export const metadata: Metadata = {
   openGraph: {
     title: "Treatment Plans",
-    description: "Pick a plan and we handle the rest. General Care for steady upkeep, Premium Care when uptime matters. One flat monthly fee.",
+    description:
+      "Three ways to work with us — a one-time deep audit, or ongoing care from $299/mo. Launch pricing locked in for early patients.",
   },
   twitter: {
     title: "Treatment Plans",
-    description: "Pick a plan and we handle the rest. General Care for steady upkeep, Premium Care when uptime matters. One flat monthly fee.",
+    description:
+      "Three ways to work with us — a one-time deep audit, or ongoing care from $299/mo. Launch pricing locked in for early patients.",
   },
   title: "Treatment Plans",
   description:
-    "Flat monthly fees. No surprise hours, no upsells. Cancel anytime.",
+    "A one-time deep audit, or ongoing care. Flat fees, no surprise hours, cancel anytime.",
 };
 
 export default function PlansPage() {
@@ -25,11 +27,12 @@ export default function PlansPage() {
           Treatment Plans
         </p>
         <h1 className="mt-3 max-w-3xl text-balance text-4xl font-semibold tracking-tight md:text-6xl">
-          Care for your site, on a flat monthly fee.
+          Care for your site, on a flat fee.
         </h1>
         <p className="mt-6 max-w-2xl text-lg text-muted">
-          No surprise hours, no upsells, no contracts. Pick the level of care
-          that fits, and change your mind anytime.
+          One-time audit or ongoing care — no surprise hours, no contracts.
+          Launch pricing is locked in for our early patients; goes up after
+          launch.
         </p>
       </Section>
       <PlansSection />

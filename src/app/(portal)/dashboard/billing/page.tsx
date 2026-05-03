@@ -36,40 +36,66 @@ type SearchParams = Promise<{
   card?: string;
 }>;
 
-const PLAN_RANK: Record<string, number> = { general: 1, premium: 2 };
+const PLAN_RANK: Record<string, number> = {
+  checkup: 0,
+  general: 1,
+  premium: 2,
+};
+
+const YEARLY_DISCOUNT = 0.15;
 
 const PLAN_FEATURES: Record<
   "general" | "premium",
-  { label: string; price: string; priceCents: number; features: string[] }
+  {
+    label: string;
+    monthlyPrice: number;
+    yearlyMonthlyEquivalent: number;
+    features: string[];
+  }
 > = {
   general: {
     label: "General Care",
-    price: "$900",
-    priceCents: 90000,
+    monthlyPrice: 299,
+    yearlyMonthlyEquivalent: monthlyEquivalentYearly(299),
     features: [
+      "Monthly design + content improvements",
+      "Monthly SEO work to grow search traffic",
+      "Industry-standard security hardening",
       "Edits and fixes — whatever your site needs",
-      "24/7 uptime + security monitoring",
-      "Direct messaging with your doctor",
+      "24/7 uptime monitoring + automatic backups",
       "Monthly report from your doctor",
     ],
   },
   premium: {
     label: "Premium Care",
-    price: "$2,400",
-    priceCents: 240000,
+    monthlyPrice: 999,
+    yearlyMonthlyEquivalent: monthlyEquivalentYearly(999),
     features: [
-      "Active improvements — we plan, you approve",
-      "Priority same-day response",
-      "Quarterly accessibility + security audits",
-      "Performance budget enforcement on every change",
+      "Everything in General Care, plus:",
+      "Same-day priority response, 7 days a week",
+      "Top-tier security hardening + mail authentication",
+      "Email breach monitoring (HIBP) — alerts within the hour",
+      "Live security + uptime telemetry on your dashboard",
+      "Quarterly accessibility + security audit",
     ],
   },
 };
 
+function monthlyEquivalentYearly(monthly: number): number {
+  return Math.round((monthly * 12 * (1 - YEARLY_DISCOUNT)) / 12);
+}
+
+function yearlyTotal(monthly: number): number {
+  return Math.round(monthly * 12 * (1 - YEARLY_DISCOUNT));
+}
+
 /** Features in `target` that aren't in `current` — what you actually
  *  *gain* by upgrading. Cheap string-equality is fine here; the lists
  *  are short and authored. */
-function featureDelta(current: "general" | "premium", target: "general" | "premium"): string[] {
+function featureDelta(
+  current: "general" | "premium",
+  target: "general" | "premium"
+): string[] {
   const cur = new Set(PLAN_FEATURES[current].features);
   return PLAN_FEATURES[target].features.filter((f) => !cur.has(f));
 }
@@ -158,7 +184,7 @@ function Banners({
       {params.upgrade === "not-higher" && (
         <Banner
           tone="warning"
-          title="That isn't a higher tier"
+          title="That isn't a change"
           body="Use the Stripe portal below to downgrade — we don't surface that on-site."
         />
       )}
@@ -270,13 +296,15 @@ function ActiveSubscriptionCard({
         : "Custom";
   const monthly =
     state.mrrCents > 0 ? `$${(state.mrrCents / 100).toFixed(0)}/mo` : "—";
+  const intervalLabel =
+    state.interval === "yearly" ? "Billed yearly" : "Billed monthly";
 
   return (
     <section className="mt-8 rounded-2xl border border-border-strong bg-surface/40 p-7">
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-accent">
-            Active
+            Active · {intervalLabel}
           </p>
           <h2 className="mt-2 flex items-baseline gap-3 text-2xl font-semibold tracking-tight">
             {planLabel}
@@ -329,7 +357,7 @@ function ActiveSubscriptionCard({
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
-   Plan ladder — current plan + higher tiers only
+   Plan ladder — current plan + higher tiers + cadence-switch upsell
    ──────────────────────────────────────────────────────────────────────── */
 
 function PlansLadder({
@@ -337,7 +365,10 @@ function PlansLadder({
 }: {
   state: Awaited<ReturnType<typeof getBillingStateForCurrentUser>>;
 }) {
+  const currentPlan = state.plan as "general" | "premium";
   const currentRank = PLAN_RANK[state.plan] ?? 0;
+  const currentInterval = state.interval ?? "monthly";
+
   const allTiers: ("general" | "premium")[] = ["general", "premium"];
 
   return (
@@ -348,22 +379,24 @@ function PlansLadder({
       <div className="grid gap-3 md:grid-cols-2">
         {allTiers.map((tier) => {
           const tierRank = PLAN_RANK[tier];
-          if (tierRank < currentRank) return null; // hide lower tiers
+          if (tierRank < currentRank) return null;
           const isCurrent = tierRank === currentRank;
           if (isCurrent) {
             return (
               <CurrentPlanCard
                 key={tier}
                 tier={tier}
-                isOnlyTierAvailable={tierRank === 2}
+                interval={currentInterval}
+                showYearlySwitch={currentInterval === "monthly"}
               />
             );
           }
           return (
             <UpgradePlanCard
               key={tier}
-              from={state.plan as "general" | "premium"}
+              from={currentPlan}
               to={tier}
+              interval={currentInterval}
             />
           );
         })}
@@ -374,12 +407,19 @@ function PlansLadder({
 
 function CurrentPlanCard({
   tier,
-  isOnlyTierAvailable,
+  interval,
+  showYearlySwitch,
 }: {
   tier: "general" | "premium";
-  isOnlyTierAvailable: boolean;
+  interval: "monthly" | "yearly";
+  showYearlySwitch: boolean;
 }) {
   const meta = PLAN_FEATURES[tier];
+  const priceLabel =
+    interval === "yearly"
+      ? `$${meta.yearlyMonthlyEquivalent}/mo · billed yearly`
+      : `$${meta.monthlyPrice}/mo`;
+
   return (
     <div className="rounded-2xl border border-border bg-surface/30 p-6 opacity-70">
       <div className="flex items-start justify-between gap-3">
@@ -390,7 +430,7 @@ function CurrentPlanCard({
           <p className="mt-2 text-xl font-semibold tracking-tight text-muted-strong">
             {meta.label}
           </p>
-          <p className="mt-1 font-mono text-sm text-muted">{meta.price}/mo</p>
+          <p className="mt-1 font-mono text-sm text-muted">{priceLabel}</p>
         </div>
         <span className="grid h-9 w-9 place-items-center rounded-lg bg-muted/10 text-muted ring-1 ring-inset ring-muted/20">
           <CheckCircle2 className="h-4 w-4" />
@@ -404,10 +444,23 @@ function CurrentPlanCard({
           </li>
         ))}
       </ul>
-      {isOnlyTierAvailable && (
-        <p className="mt-5 rounded-md bg-surface/60 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
-          Top tier — no further upgrade
-        </p>
+      {showYearlySwitch && (
+        <form action={upgradeSubscriptionForCurrentUser} className="mt-5">
+          <input type="hidden" name="plan" value={tier} />
+          <input type="hidden" name="interval" value="yearly" />
+          <button
+            type="submit"
+            className="w-full rounded-xl border border-accent/40 bg-accent-soft/20 px-4 py-3 text-left transition-colors hover:bg-accent-soft/40"
+          >
+            <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">
+              Switch to yearly · save 15%
+            </p>
+            <p className="mt-1 text-xs text-foreground">
+              ${yearlyTotal(meta.monthlyPrice).toLocaleString()}/yr instead of $
+              {(meta.monthlyPrice * 12).toLocaleString()}/yr.
+            </p>
+          </button>
+        </form>
       )}
     </div>
   );
@@ -416,15 +469,22 @@ function CurrentPlanCard({
 function UpgradePlanCard({
   from,
   to,
+  interval,
 }: {
   from: "general" | "premium";
   to: "general" | "premium";
+  interval: "monthly" | "yearly";
 }) {
   const meta = PLAN_FEATURES[to];
   const newFeatures = featureDelta(from, to);
+  const priceLabel =
+    interval === "yearly"
+      ? `$${meta.yearlyMonthlyEquivalent}/mo · billed yearly`
+      : `$${meta.monthlyPrice}/mo`;
   return (
     <form action={upgradeSubscriptionForCurrentUser}>
       <input type="hidden" name="plan" value={to} />
+      <input type="hidden" name="interval" value={interval} />
       <button
         type="submit"
         className="group flex w-full flex-col items-start gap-3 rounded-2xl border border-accent bg-accent-soft/20 p-6 text-left transition-colors hover:bg-accent-soft/40"
@@ -437,7 +497,7 @@ function UpgradePlanCard({
             <p className="mt-2 text-xl font-semibold tracking-tight text-foreground">
               {meta.label}
             </p>
-            <p className="mt-1 font-mono text-sm text-muted">{meta.price}/mo</p>
+            <p className="mt-1 font-mono text-sm text-muted">{priceLabel}</p>
           </div>
           <span className="grid h-9 w-9 place-items-center rounded-lg bg-accent-soft text-accent ring-1 ring-inset ring-accent/30">
             <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
@@ -469,7 +529,7 @@ function UpgradePlanCard({
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
-   First-time pick (no subscription yet)
+   First-time pick (no subscription yet) — Checkup-only or trial
    ──────────────────────────────────────────────────────────────────────── */
 
 function PickPlanCards({
@@ -479,9 +539,29 @@ function PickPlanCards({
 }) {
   const onTrial = state.trialPhase === "active" && state.trialEndsAt;
   const trialEnded = state.trialPhase === "ended";
+  const checkupOnly = state.plan === "checkup";
 
   return (
     <>
+      {checkupOnly && (
+        <section className="mt-8 rounded-2xl border border-accent/30 bg-accent-soft/30 p-5">
+          <div className="flex items-start gap-3">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-accent-soft text-accent ring-1 ring-inset ring-accent/30">
+              <Sparkles className="h-4 w-4" />
+            </span>
+            <div>
+              <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-accent">
+                Checkup complete · ready for ongoing care
+              </p>
+              <p className="mt-1 text-sm text-foreground">
+                Your $599 Checkup credits toward your first 2 months — pick a
+                plan below to keep your doctor on call.
+              </p>
+            </div>
+          </div>
+        </section>
+      )}
+
       {onTrial && state.trialEndsAt && (
         <section className="mt-8 rounded-2xl border border-accent/30 bg-accent-soft/30 p-5">
           <div className="flex items-start gap-3">
@@ -524,6 +604,10 @@ function PickPlanCards({
         <PlanCheckoutCard plan="general" />
         <PlanCheckoutCard plan="premium" highlighted />
       </section>
+      <p className="mt-4 text-center font-mono text-[11px] uppercase tracking-[0.16em] text-muted">
+        Want yearly billing? Pick your plan, then switch to yearly from the
+        dashboard. 15% off.
+      </p>
     </>
   );
 }
@@ -539,6 +623,7 @@ function PlanCheckoutCard({
   return (
     <form action={startCheckoutForCurrentUser}>
       <input type="hidden" name="plan" value={plan} />
+      <input type="hidden" name="interval" value="monthly" />
       <button
         type="submit"
         className={cn(
@@ -556,7 +641,7 @@ function PlanCheckoutCard({
             {meta.label}
           </span>
           <span className="font-mono text-base text-muted">
-            {meta.price}/mo
+            ${meta.monthlyPrice}/mo
           </span>
         </div>
         <ul className="mt-1 space-y-1.5 text-xs text-muted">

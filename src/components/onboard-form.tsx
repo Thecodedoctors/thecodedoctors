@@ -4,25 +4,40 @@ import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 import { ArrowRight, User, Mail, Lock, Globe, Building } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { startTrial, startWithPlan, type OnboardResult } from "@/server/onboard";
+import {
+  startTrial,
+  startWithPlan,
+  startWithCheckup,
+  type OnboardResult,
+} from "@/server/onboard";
 
-type Variant = "trial" | "plan";
+type Variant = "trial" | "plan" | "checkup";
 
 export function OnboardForm({
   variant,
   plan,
+  interval,
   defaultEmail,
   defaultUrl,
   refCode,
 }: {
   variant: Variant;
-  /** Required when variant === "plan". Ignored for trial (always General). */
+  /** Required when variant === "plan". Ignored for trial (always General)
+   *  and for checkup (one-time). */
   plan?: "general" | "premium";
+  /** Required when variant === "plan". Ignored for trial + checkup
+   *  (which only have one cadence each). */
+  interval?: "monthly" | "yearly";
   defaultEmail?: string;
   defaultUrl?: string;
   refCode?: string;
 }) {
-  const action = variant === "trial" ? startTrial : startWithPlan;
+  const action =
+    variant === "trial"
+      ? startTrial
+      : variant === "checkup"
+        ? startWithCheckup
+        : startWithPlan;
   const [state, formAction] = useActionState<OnboardResult | null, FormData>(
     action,
     null
@@ -33,9 +48,10 @@ export function OnboardForm({
       {variant === "plan" && plan && (
         <input type="hidden" name="plan" value={plan} />
       )}
-      {refCode && (
-        <input type="hidden" name="ref" value={refCode} />
+      {variant === "plan" && interval && (
+        <input type="hidden" name="interval" value={interval} />
       )}
+      {refCode && <input type="hidden" name="ref" value={refCode} />}
 
       <Field icon={User}>
         <input
@@ -101,7 +117,7 @@ export function OnboardForm({
         />
       </Field>
 
-      <Submit />
+      <Submit variant={variant} />
 
       {state && !state.ok && (
         <p className="rounded-lg border border-signal/30 bg-signal/5 px-4 py-3 text-xs text-signal">
@@ -112,8 +128,14 @@ export function OnboardForm({
   );
 }
 
-function Submit() {
+function Submit({ variant }: { variant: Variant }) {
   const { pending } = useFormStatus();
+  const idleLabel =
+    variant === "checkup"
+      ? "Continue to payment"
+      : variant === "trial"
+        ? "Start free trial"
+        : "Continue to payment";
   return (
     <Button
       type="submit"
@@ -122,7 +144,7 @@ function Submit() {
       className="w-full"
       disabled={pending}
     >
-      {pending ? "Setting up…" : "Continue"}
+      {pending ? "Setting up…" : idleLabel}
       {!pending && <ArrowRight className="h-4 w-4" />}
     </Button>
   );

@@ -13,6 +13,9 @@ export default function sitemap(): MetadataRoute.Sitemap {
     "/book",
     "/privacy",
     "/terms",
+    "/refund-policy",
+    "/acceptable-use",
+    "/sla",
     "/security",
     "/cookies",
   ];

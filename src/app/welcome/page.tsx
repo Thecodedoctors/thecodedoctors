@@ -104,8 +104,8 @@ function ManualSignIn({
           Account created.
         </h1>
         <p className="mt-3 text-sm text-muted leading-relaxed">
-          Your card is on file and your trial has started. Sign in once to
-          get to your hub — your doctor will be in touch shortly.
+          Your account is set up and payment is confirmed. Sign in once to get
+          to your hub — your doctor will be in touch shortly.
         </p>
 
         {error === "WrongPassword" && (
