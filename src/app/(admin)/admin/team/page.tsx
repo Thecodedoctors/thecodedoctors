@@ -6,14 +6,25 @@ import {
   Eye,
   ShieldCheck,
   ShieldAlert,
+  Pause,
+  Play,
+  Trash2,
+  Ban,
 } from "lucide-react";
 import { Section } from "@/components/ui/section";
+import { auth } from "@/auth";
 import {
   listStaffWithStats,
   teamHeadline,
   recentStaffActivity,
   type StaffRow,
 } from "@/server/team";
+import {
+  suspendUser,
+  unsuspendUserForm,
+  deleteUser,
+} from "@/server/lifecycle";
+import { ReasonActionButton } from "@/components/admin/reason-action-button";
 import { formatRelativeAgo, formatAbsolute } from "@/lib/time";
 import { cn } from "@/lib/cn";
 
@@ -61,11 +72,14 @@ const ACTION_LABEL: Record<string, string> = {
 };
 
 export default async function TeamPage() {
-  const [staff, headline, activity] = await Promise.all([
+  const [session, staff, headline, activity] = await Promise.all([
+    auth(),
     listStaffWithStats(),
     teamHeadline(),
     recentStaffActivity(10),
   ]);
+  const isFounder = session?.user?.role === "founder";
+  const myUserId = session?.user?.id ?? "";
 
   return (
     <Section size="md" reveal={false}>
@@ -123,10 +137,15 @@ export default async function TeamPage() {
             {staff.map((s) => {
               const config = ROLE_CONFIG[s.role];
               const Icon = config.icon;
+              const showActions =
+                isFounder && s.role !== "founder" && s.id !== myUserId;
               return (
                 <li
                   key={s.id}
-                  className="flex flex-wrap items-center gap-4 px-5 py-4"
+                  className={cn(
+                    "flex flex-wrap items-center gap-4 px-5 py-4",
+                    s.deletedAt && "opacity-60"
+                  )}
                 >
                   <span
                     className={cn(
@@ -149,7 +168,18 @@ export default async function TeamPage() {
                       >
                         {config.label}
                       </span>
-                      {s.role !== "readonly" && !s.totpEnabled && (
+                      {s.deletedAt ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-signal/10 text-signal ring-1 ring-inset ring-signal/30 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em]">
+                          <Trash2 className="h-2.5 w-2.5" />
+                          Deleted
+                        </span>
+                      ) : s.suspendedAt ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-warning/10 text-warning ring-1 ring-inset ring-warning/30 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em]">
+                          <Ban className="h-2.5 w-2.5" />
+                          Suspended
+                        </span>
+                      ) : null}
+                      {s.role !== "readonly" && !s.totpEnabled && !s.deletedAt && (
                         <span className="inline-flex items-center gap-1 rounded-full bg-warning/10 text-warning ring-1 ring-inset ring-warning/30 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em]">
                           <ShieldAlert className="h-2.5 w-2.5" />
                           No 2FA
@@ -179,7 +209,51 @@ export default async function TeamPage() {
                         })}
                       </span>
                     </div>
+                    {s.suspensionReason && (
+                      <p className="mt-2 rounded-md bg-warning/5 px-3 py-2 text-xs text-foreground ring-1 ring-inset ring-warning/20">
+                        <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-warning">
+                          Suspension reason
+                        </span>
+                        <br />
+                        {s.suspensionReason}
+                      </p>
+                    )}
                   </div>
+                  {showActions && !s.deletedAt && (
+                    <div className="flex shrink-0 flex-wrap items-center gap-2">
+                      {s.suspendedAt ? (
+                        <form action={unsuspendUserForm}>
+                          <input type="hidden" name="userId" value={s.id} />
+                          <button
+                            type="submit"
+                            className="inline-flex items-center gap-1.5 rounded-md border border-border-strong px-3 py-1 text-xs font-medium text-muted transition-colors hover:border-success hover:text-success"
+                          >
+                            <Play className="h-3 w-3" />
+                            Restore
+                          </button>
+                        </form>
+                      ) : (
+                        <ReasonActionButton
+                          action={suspendUser}
+                          hiddenFields={{ userId: s.id }}
+                          trigger={{ label: "Suspend", icon: Pause }}
+                          tone="danger"
+                          title={`Suspend ${s.name ?? s.email ?? "this account"}?`}
+                          description="They won't be able to sign in until you restore them. We'll email them with the reason below."
+                          confirmLabel="Suspend account"
+                        />
+                      )}
+                      <ReasonActionButton
+                        action={deleteUser}
+                        hiddenFields={{ userId: s.id }}
+                        trigger={{ label: "Delete", icon: Trash2 }}
+                        tone="danger"
+                        title={`Delete ${s.name ?? s.email ?? "this account"}?`}
+                        description="The account is closed (soft delete — records remain on file). Password is wiped; sign-in is blocked permanently. We'll email them with the reason below. Hard deletes are SQL-only."
+                        confirmLabel="Close account"
+                      />
+                    </div>
+                  )}
                 </li>
               );
             })}

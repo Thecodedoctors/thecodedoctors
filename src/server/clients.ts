@@ -139,6 +139,9 @@ export type ClientDetail = {
     email: string | null;
     isAdmin: boolean;
     joinedAt: Date;
+    suspendedAt: Date | null;
+    suspensionReason: string | null;
+    deletedAt: Date | null;
   }[];
   recentRequests: {
     id: string;
@@ -201,6 +204,9 @@ export async function getClientForStaff(clientId: string): Promise<ClientDetail 
       joinedAt: clientMembers.createdAt,
       name: users.name,
       email: users.email,
+      suspendedAt: users.suspendedAt,
+      suspensionReason: users.suspensionReason,
+      deletedAt: users.deletedAt,
     })
     .from(clientMembers)
     .leftJoin(users, eq(users.id, clientMembers.userId))
@@ -261,6 +267,9 @@ export async function getClientForStaff(clientId: string): Promise<ClientDetail 
       email: m.email,
       isAdmin: m.isAdmin,
       joinedAt: new Date(m.joinedAt),
+      suspendedAt: m.suspendedAt ? new Date(m.suspendedAt) : null,
+      suspensionReason: m.suspensionReason,
+      deletedAt: m.deletedAt ? new Date(m.deletedAt) : null,
     })),
     recentRequests: reqRows.map((r) => ({
       ...r,

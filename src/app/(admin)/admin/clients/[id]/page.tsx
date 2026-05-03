@@ -10,6 +10,11 @@ import {
   RefreshCw,
   Users as UsersIcon,
   Stethoscope,
+  Pause,
+  Play,
+  Ban,
+  UserMinus,
+  Trash2,
 } from "lucide-react";
 import { Section } from "@/components/ui/section";
 import { auth } from "@/auth";
@@ -18,6 +23,15 @@ import {
   updateClient,
   listStaffForPicker,
 } from "@/server/clients";
+import {
+  pauseClient,
+  unpauseClientForm,
+  dischargeClient,
+  suspendUser,
+  unsuspendUserForm,
+  deleteUser,
+} from "@/server/lifecycle";
+import { ReasonActionButton } from "@/components/admin/reason-action-button";
 import { checkOneClientNow } from "@/server/health";
 import { StatusPill, PriorityPill, TypeLabel } from "@/components/status-pill";
 import { formatRelativeAgo } from "@/lib/time";
@@ -118,6 +132,65 @@ export default async function PatientDetailPage({
           />
         </div>
 
+        {/* Status reason — surface the most recent pause/discharge note */}
+        {c.statusReason && (c.status === "paused" || c.status === "discharged") && (
+          <div
+            className={cn(
+              "mt-6 rounded-2xl border p-4",
+              c.status === "paused"
+                ? "border-warning/30 bg-warning/5"
+                : "border-signal/30 bg-signal/5"
+            )}
+          >
+            <p
+              className={cn(
+                "font-mono text-[11px] uppercase tracking-[0.18em]",
+                c.status === "paused" ? "text-warning" : "text-signal"
+              )}
+            >
+              {c.status === "paused" ? "Paused" : "Discharged"} — reason on file
+            </p>
+            <p className="mt-2 text-sm text-foreground">{c.statusReason}</p>
+          </div>
+        )}
+
+        {/* Patient lifecycle actions — staff-only */}
+        <section className="mt-6 flex flex-wrap items-center gap-2">
+          {c.status === "paused" ? (
+            <form action={unpauseClientForm}>
+              <input type="hidden" name="clientId" value={c.id} />
+              <button
+                type="submit"
+                className="inline-flex items-center gap-1.5 rounded-md border border-border-strong px-3 py-1 text-xs font-medium text-muted transition-colors hover:border-success hover:text-success"
+              >
+                <Play className="h-3 w-3" />
+                Resume care
+              </button>
+            </form>
+          ) : c.status !== "discharged" ? (
+            <ReasonActionButton
+              action={pauseClient}
+              hiddenFields={{ clientId: c.id }}
+              trigger={{ label: "Pause", icon: Pause }}
+              tone="muted"
+              title={`Pause care for ${c.name}?`}
+              description="New requests are queued, monitoring keeps running, no active treatment until you resume. We'll email the primary contact with the reason below."
+              confirmLabel="Pause care"
+            />
+          ) : null}
+          {c.status !== "discharged" && (
+            <ReasonActionButton
+              action={dischargeClient}
+              hiddenFields={{ clientId: c.id }}
+              trigger={{ label: "Discharge", icon: Ban }}
+              tone="danger"
+              title={`Discharge ${c.name}?`}
+              description="Closes care for this patient. Records remain on file under the retention policy. We'll email the primary contact with the reason below."
+              confirmLabel="Discharge patient"
+            />
+          )}
+        </section>
+
         {/* Site health */}
         {c.websiteUrl && (
           <SiteHealthCard
@@ -184,37 +257,97 @@ export default async function PatientDetailPage({
             </p>
           ) : (
             <ul className="divide-y divide-border/60 overflow-hidden rounded-2xl border border-border bg-surface/40">
-              {data.members.map((m) => (
-                <li
-                  key={m.userId}
-                  className="flex flex-wrap items-center justify-between gap-2 px-5 py-3"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-foreground">
-                      {m.name ?? m.email ?? "(unnamed)"}
-                    </p>
-                    {m.name && m.email && (
-                      <p className="font-mono text-xs text-muted">
-                        {m.email}
-                      </p>
+              {data.members.map((m) => {
+                const isSelf = m.userId === session.user.id;
+                const showActions = isFounder && !m.deletedAt && !isSelf;
+                return (
+                  <li
+                    key={m.userId}
+                    className={cn(
+                      "flex flex-wrap items-center gap-3 px-5 py-3",
+                      m.deletedAt && "opacity-60"
                     )}
-                  </div>
-                  <div className="flex items-center gap-3 text-xs text-muted">
-                    {m.isAdmin && (
-                      <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-accent">
-                        Admin
-                      </span>
-                    )}
-                    <span className="font-mono">
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-baseline gap-2">
+                        <p className="text-sm font-medium text-foreground">
+                          {m.name ?? m.email ?? "(unnamed)"}
+                        </p>
+                        {m.deletedAt ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-signal/10 text-signal ring-1 ring-inset ring-signal/30 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em]">
+                            <Trash2 className="h-2.5 w-2.5" />
+                            Deleted
+                          </span>
+                        ) : m.suspendedAt ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-warning/10 text-warning ring-1 ring-inset ring-warning/30 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em]">
+                            <Ban className="h-2.5 w-2.5" />
+                            Suspended
+                          </span>
+                        ) : null}
+                        {m.isAdmin && (
+                          <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-accent">
+                            Admin
+                          </span>
+                        )}
+                      </div>
+                      {m.name && m.email && (
+                        <p className="font-mono text-xs text-muted">{m.email}</p>
+                      )}
+                      {m.suspensionReason && (
+                        <p className="mt-1.5 rounded-md bg-warning/5 px-2.5 py-1.5 text-xs text-foreground ring-1 ring-inset ring-warning/20">
+                          {m.suspensionReason}
+                        </p>
+                      )}
+                    </div>
+                    <span className="hidden sm:inline font-mono text-xs text-muted">
                       Joined{" "}
                       {new Date(m.joinedAt).toLocaleDateString(undefined, {
                         month: "short",
                         year: "numeric",
                       })}
                     </span>
-                  </div>
-                </li>
-              ))}
+                    {showActions && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        {m.suspendedAt ? (
+                          <form action={unsuspendUserForm}>
+                            <input
+                              type="hidden"
+                              name="userId"
+                              value={m.userId}
+                            />
+                            <button
+                              type="submit"
+                              className="inline-flex items-center gap-1.5 rounded-md border border-border-strong px-3 py-1 text-xs font-medium text-muted transition-colors hover:border-success hover:text-success"
+                            >
+                              <Play className="h-3 w-3" />
+                              Restore
+                            </button>
+                          </form>
+                        ) : (
+                          <ReasonActionButton
+                            action={suspendUser}
+                            hiddenFields={{ userId: m.userId }}
+                            trigger={{ label: "Suspend", icon: Pause }}
+                            tone="danger"
+                            title={`Suspend ${m.name ?? m.email ?? "this user"}?`}
+                            description="They won't be able to sign in until you restore them. We'll email them with the reason below."
+                            confirmLabel="Suspend account"
+                          />
+                        )}
+                        <ReasonActionButton
+                          action={deleteUser}
+                          hiddenFields={{ userId: m.userId }}
+                          trigger={{ label: "Delete", icon: UserMinus }}
+                          tone="danger"
+                          title={`Delete ${m.name ?? m.email ?? "this user"}?`}
+                          description="The account is closed (soft delete — records remain). Password is wiped; sign-in is blocked permanently. We'll email them with the reason below."
+                          confirmLabel="Close account"
+                        />
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </section>

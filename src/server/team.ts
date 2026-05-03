@@ -11,6 +11,9 @@ export type StaffRow = {
   twoFactorRequired: boolean;
   lastLoginAt: Date | null;
   createdAt: Date;
+  suspendedAt: Date | null;
+  suspensionReason: string | null;
+  deletedAt: Date | null;
   assignedOpen: number;
   assignedTotal: number;
 };
@@ -35,6 +38,9 @@ export async function listStaffWithStats(): Promise<StaffRow[]> {
       twoFactorRequired: users.twoFactorRequired,
       lastLoginAt: users.lastLoginAt,
       createdAt: users.createdAt,
+      suspendedAt: users.suspendedAt,
+      suspensionReason: users.suspensionReason,
+      deletedAt: users.deletedAt,
       assignedOpen: sql<number>`(
         select count(*)::int from request
         where request.assigned_doctor_id = ${users.id}
@@ -62,6 +68,8 @@ export async function listStaffWithStats(): Promise<StaffRow[]> {
       role: r.role as StaffRow["role"],
       lastLoginAt: r.lastLoginAt ? new Date(r.lastLoginAt) : null,
       createdAt: new Date(r.createdAt),
+      suspendedAt: r.suspendedAt ? new Date(r.suspendedAt) : null,
+      deletedAt: r.deletedAt ? new Date(r.deletedAt) : null,
     }))
     .sort((a, b) => {
       const dr = ROLE_ORDER[a.role] - ROLE_ORDER[b.role];

@@ -31,6 +31,12 @@ export async function requireUser(redirectTo?: string): Promise<Session> {
   if (!session?.user) {
     redirect(`/login?next=${encodeURIComponent(redirectTo ?? "/dashboard")}`);
   }
+  // Suspended or soft-deleted users get bounced — even with a still-
+  // valid JWT cookie. The session callback re-pulls the flags every
+  // request so this catches in-flight suspensions.
+  if (session.user.suspended || session.user.deleted) {
+    redirect("/login?error=Suspended");
+  }
   return session;
 }
 

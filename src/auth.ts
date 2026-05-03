@@ -22,6 +22,11 @@ declare module "next-auth" {
       role: "client" | "doctor" | "senior_doctor" | "founder" | "readonly";
       twoFactorRequired: boolean;
       totpEnabled: boolean;
+      /** Re-pulled fresh from the DB on every session() call so an
+       *  in-flight suspension or soft-delete kicks the user out on
+       *  their next request. */
+      suspended: boolean;
+      deleted: boolean;
     } & DefaultSession["user"];
   }
   interface User {
@@ -76,6 +81,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         if (rows.length === 0) return null;
 
         const user = rows[0];
+        // Suspended or soft-deleted users can't sign in regardless of
+        // password. We return null (same as wrong password) so the
+        // sign-in page can't be used to enumerate which accounts are
+        // suspended vs which simply don't exist.
+        if (user.suspendedAt || user.deletedAt) return null;
         if (!user.passwordHash) return null;
 
         const ok = await verifyPassword(password, user.passwordHash);
@@ -137,14 +147,19 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       if (!session.user || !token.id) return session;
       session.user.id = token.id as string;
 
-      // Re-pull fresh role + 2fa flags so role changes don't require a
-      // re-login. Single indexed lookup per request.
+      // Re-pull fresh role + 2fa + suspension/deletion flags on every
+      // request. Without this, an in-flight role change OR an
+      // in-flight suspension wouldn't take effect until the JWT
+      // expired. The flags are checked by `requireUser` and the
+      // portal/admin layouts to bounce the offender out.
       try {
         const rows = await db()
           .select({
             role: users.role,
             twoFactorRequired: users.twoFactorRequired,
             totpEnabled: users.totpEnabled,
+            suspendedAt: users.suspendedAt,
+            deletedAt: users.deletedAt,
           })
           .from(users)
           .where(eq(users.id, token.id as string))
@@ -154,10 +169,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         session.user.twoFactorRequired =
           Boolean(fresh?.twoFactorRequired) || STAFF_ROLES.has(session.user.role);
         session.user.totpEnabled = Boolean(fresh?.totpEnabled);
+        session.user.suspended = Boolean(fresh?.suspendedAt);
+        session.user.deleted = Boolean(fresh?.deletedAt);
       } catch {
         session.user.role = "client";
         session.user.twoFactorRequired = false;
         session.user.totpEnabled = false;
+        session.user.suspended = false;
+        session.user.deleted = false;
       }
       return session;
     },

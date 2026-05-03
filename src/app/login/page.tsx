@@ -178,6 +178,8 @@ function errorCopy(code: string): string {
       return "Enter your email.";
     case "ShortPassword":
       return "Password must be at least 8 characters.";
+    case "Suspended":
+      return "This account is suspended. Reach out to hello@thecodedoctors.com if you think this is a mistake.";
     default:
       return "We couldn't sign you in. Try again, or reach out to hello@thecodedoctors.com.";
   }

@@ -98,6 +98,13 @@ export const users = pgTable("user", {
   totpEnabled: boolean("totp_enabled").notNull().default(false),
   twoFactorRequired: boolean("two_factor_required").notNull().default(false),
   lastLoginAt: timestamp("last_login_at", { mode: "date" }),
+  /** Suspended users can't sign in. Cleared when un-suspended. */
+  suspendedAt: timestamp("suspended_at", { mode: "date" }),
+  suspensionReason: text("suspension_reason"),
+  /** Soft-deleted users can't sign in and password is wiped. Hard
+   *  delete stays SQL-only because of the FK consequences. */
+  deletedAt: timestamp("deleted_at", { mode: "date" }),
+  deletionReason: text("deletion_reason"),
   createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
 });
 
@@ -186,6 +193,10 @@ export const clients = pgTable(
      *  current_period_end, then it lapses. */
     cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
     notes: text("notes"),
+    /** Set whenever the practice changes status to "paused" or
+     *  "discharged" with a reason; cleared when status flips back to
+     *  "active" or "lead". Mirrors users.suspensionReason / deletionReason. */
+    statusReason: text("status_reason"),
     createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
   },
