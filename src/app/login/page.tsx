@@ -105,6 +105,7 @@ type SearchParams = Promise<{
   next?: string;
   error?: string;
   email?: string;
+  reset?: string;
 }>;
 
 export default async function LoginPage({
@@ -215,8 +216,22 @@ export default async function LoginPage({
               Sign in
               <ArrowRight className="h-4 w-4" />
             </Button>
+
+            <p className="pt-1 text-center">
+              <Link
+                href="/forgot-password"
+                className="text-xs text-muted underline decoration-border-strong underline-offset-4 hover:text-foreground hover:decoration-accent"
+              >
+                Forgot password?
+              </Link>
+            </p>
           </form>
 
+          {params.reset === "1" && (
+            <p className="mt-4 rounded-lg border border-success/30 bg-success/5 px-4 py-3 text-xs text-success">
+              Password updated. Sign in with your new password.
+            </p>
+          )}
           {params.error && (
             <p className="mt-4 rounded-lg border border-signal/30 bg-signal/5 px-4 py-3 text-xs text-signal">
               {errorCopy(params.error)}

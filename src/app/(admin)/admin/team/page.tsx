@@ -10,6 +10,7 @@ import {
   Play,
   Trash2,
   Ban,
+  Unlock,
 } from "lucide-react";
 import { Section } from "@/components/ui/section";
 import { auth } from "@/auth";
@@ -24,6 +25,7 @@ import {
   unsuspendUserForm,
   deleteUser,
 } from "@/server/lifecycle";
+import { resetTwoFactorForUser } from "@/server/two-factor";
 import { ReasonActionButton } from "@/components/admin/reason-action-button";
 import { formatRelativeAgo, formatAbsolute } from "@/lib/time";
 import { cn } from "@/lib/cn";
@@ -241,6 +243,17 @@ export default async function TeamPage() {
                           title={`Suspend ${s.name ?? s.email ?? "this account"}?`}
                           description="They won't be able to sign in until you restore them. We'll email them with the reason below."
                           confirmLabel="Suspend account"
+                        />
+                      )}
+                      {s.totpEnabled && (
+                        <ReasonActionButton
+                          action={resetTwoFactorForUser}
+                          hiddenFields={{ userId: s.id }}
+                          trigger={{ label: "Reset 2FA", icon: <Unlock className="h-3 w-3" /> }}
+                          tone="muted"
+                          title={`Reset 2FA for ${s.name ?? s.email ?? "this account"}?`}
+                          description="Wipes their authenticator + recovery codes so they can sign in with password alone. Use only when they've lost their device AND their saved recovery codes — re-enabling 2FA after sign-in is the user's job. We'll email them with the reason below."
+                          confirmLabel="Reset 2FA"
                         />
                       )}
                       <ReasonActionButton

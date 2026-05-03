@@ -5,13 +5,15 @@ import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import QRCode from "qrcode";
-import { requireUser } from "@/lib/auth-helpers";
+import { requireUser, requireFounder } from "@/lib/auth-helpers";
 import {
   generateTotpSecret,
   buildOtpAuthUri,
   verifyTotp,
 } from "@/lib/totp";
 import { hashPassword, verifyPassword } from "@/lib/password";
+import { sendBrandEmail } from "@/lib/email";
+import { site } from "@/lib/site";
 import { recordAudit } from "@/server/audit";
 
 /**
@@ -225,6 +227,125 @@ export async function regenerateRecoveryCodes(): Promise<EnableResult> {
 
   revalidatePath("/settings/security");
   return { ok: true, recoveryCodes: codes };
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Founder unlock — when a user loses both their device + recovery
+   codes. Wipes their TOTP state so they can sign in with password
+   alone, and emails them so a hijacker who triggered this can't do it
+   silently. Founder-only by deliberate choice; this is the most
+   privileged 2FA action in the system.
+   ──────────────────────────────────────────────────────────────────────── */
+
+export type ResetTwoFactorResult =
+  | { ok: true; message: string }
+  | { ok: false; error: string };
+
+export async function resetTwoFactorForUser(
+  formData: FormData
+): Promise<ResetTwoFactorResult> {
+  const session = await requireFounder();
+  const userId = String(formData.get("userId") ?? "");
+  const reason = String(formData.get("reason") ?? "").trim();
+  if (!userId) return { ok: false, error: "Missing user." };
+  if (reason.length < 10 || reason.length > 500) {
+    return { ok: false, error: "Reason must be 10–500 characters." };
+  }
+  if (userId === session.user.id) {
+    return {
+      ok: false,
+      error: "You can't reset your own 2FA from here — disable it from /settings/security.",
+    };
+  }
+
+  const rows = await db()
+    .select()
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  const target = rows[0];
+  if (!target) return { ok: false, error: "User not found." };
+  if (!target.totpEnabled) {
+    return { ok: false, error: "That account doesn't have 2FA enabled." };
+  }
+
+  await db()
+    .update(users)
+    .set({
+      totpEnabled: false,
+      totpSecret: null,
+      totpRecoveryCodes: null,
+    })
+    .where(eq(users.id, userId));
+
+  await recordAudit({
+    actorUserId: session.user.id,
+    action: "two_factor.founder_reset",
+    targetType: "user",
+    targetId: userId,
+    after: { reason },
+  });
+
+  if (target.email) {
+    try {
+      await sendBrandEmail({
+        to: target.email,
+        subject: `Your 2FA was reset — ${site.name}`,
+        html: renderResetEmail({ name: target.name, reason }),
+      });
+    } catch (err) {
+      console.error("[two-factor] founder-reset email failed", err);
+    }
+  }
+
+  revalidatePath("/admin/team");
+  revalidatePath(`/admin/clients`);
+  return { ok: true, message: "2FA reset; user has been notified." };
+}
+
+function renderResetEmail({
+  name,
+  reason,
+}: {
+  name: string | null;
+  reason: string;
+}): string {
+  const greeting = name
+    ? `Hi ${escapeHtml(name)}.`
+    : "Hi.";
+  return `<!doctype html>
+<html lang="en">
+<body style="margin:0;background:#0A0E13;color:#F2F4F7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;line-height:1.55;">
+  <div style="max-width:560px;margin:0 auto;padding:32px;">
+    <p style="color:#3DD9D6;font-size:11px;letter-spacing:0.18em;text-transform:uppercase;font-family:ui-monospace,monospace;margin:0 0 24px 0;">${site.name}</p>
+    <h1 style="font-size:26px;font-weight:600;letter-spacing:-0.02em;margin:0 0 16px 0;">${greeting}</h1>
+    <p style="margin:0 0 16px 0;">
+      Your two-factor authentication was reset by the founder. You can sign in
+      with your password alone again — please re-enable 2FA at
+      <span style="color:#F2F4F7;font-family:ui-monospace,monospace;">Settings → Security</span>
+      as soon as you do.
+    </p>
+    <div style="background:#11161D;border:1px solid #1f2733;border-radius:12px;padding:16px;margin:20px 0;">
+      <p style="margin:0;color:#9AA4B2;font-size:12px;text-transform:uppercase;letter-spacing:0.14em;font-family:ui-monospace,monospace;">Reason</p>
+      <p style="margin:8px 0 0 0;font-size:14px;line-height:1.6;">${escapeHtml(reason)}</p>
+    </div>
+    <p style="margin:0;color:#9AA4B2;font-size:13px;">
+      If this wasn&apos;t you and you didn&apos;t request a reset, reply to
+      this email immediately so we can lock the account.
+    </p>
+    <p style="margin:32px 0 0 0;color:#9AA4B2;font-size:11px;">${site.name} · ${site.url}</p>
+  </div>
+</body>
+</html>`;
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 /* ──────────────────────────────────────────────────────────────────────────

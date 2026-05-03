@@ -292,6 +292,34 @@ export const incidents = pgTable(
 );
 
 /**
+ * Password-reset codes. User enters their email on /forgot-password;
+ * we email them a 6-digit code; they paste it + a new password on
+ * /reset-password. The code is stored hashed (PBKDF2, same as
+ * passwords) so a DB dump doesn't leak active codes. `attempts`
+ * caps brute force on a single code — 5 wrong tries invalidates it.
+ */
+export const passwordResetTokens = pgTable(
+  "password_reset_token",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    codeHash: text("code_hash").notNull(),
+    expiresAt: timestamp("expires_at", { mode: "date" }).notNull(),
+    usedAt: timestamp("used_at", { mode: "date" }),
+    attempts: integer("attempts").notNull().default(0),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("password_reset_user_idx").on(t.userId),
+    index("password_reset_expires_idx").on(t.expiresAt),
+  ]
+);
+
+/**
  * Tiny rate-limit counter — one row per (key, window-start). Keys are
  * scoped strings like `login:user@example.com` or `checkup:1.2.3.4`.
  * The check + increment is a single upsert, so it works across worker
