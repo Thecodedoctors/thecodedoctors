@@ -95,6 +95,75 @@ export async function knownUrlsForClient(clientId: string): Promise<string[]> {
 }
 
 /**
+ * Throws (via `redirect`) if a patient's account isn't currently
+ * eligible for active care — i.e. their plan lapsed, their trial
+ * ended without paying, or the founder paused/discharged them. Used
+ * to gate every patient-side mutation (create request, send message,
+ * upload file, etc.) so a stale tab can't keep pushing work into the
+ * queue after the relationship ended.
+ *
+ * "Eligible" means:
+ *   - client.status === "active"
+ *   - AND either an active Stripe subscription is on file, OR the
+ *     trial hasn't ended yet.
+ *
+ * `lead` (no payment yet), `paused`, and `discharged` all bounce.
+ */
+export async function requireActiveOrTrialing(client: {
+  status: string;
+  trialEndsAt: Date | string | null;
+  stripeSubscriptionId: string | null;
+  cancelAtPeriodEnd?: boolean;
+  currentPeriodEnd?: Date | string | null;
+}): Promise<{ ok: true } | { ok: false; reason: string; redirect: string }> {
+  if (client.status !== "active") {
+    return {
+      ok: false,
+      reason:
+        client.status === "paused"
+          ? "Care is paused for your account."
+          : client.status === "discharged"
+            ? "Your account has been discharged."
+            : "Your account isn't active yet.",
+      redirect: "/billing?inactive=1",
+    };
+  }
+  // Subscription path — covers paid customers.
+  if (client.stripeSubscriptionId) {
+    // If they cancelled, they keep access until current_period_end;
+    // after that, treat as expired.
+    if (client.cancelAtPeriodEnd && client.currentPeriodEnd) {
+      const end = new Date(client.currentPeriodEnd).getTime();
+      if (end < Date.now()) {
+        return {
+          ok: false,
+          reason: "Your subscription has ended.",
+          redirect: "/billing?inactive=1",
+        };
+      }
+    }
+    return { ok: true };
+  }
+  // No subscription → must be in an active trial.
+  if (client.trialEndsAt) {
+    const end = new Date(client.trialEndsAt).getTime();
+    if (end > Date.now()) return { ok: true };
+    return {
+      ok: false,
+      reason: "Your free trial has ended.",
+      redirect: "/billing?inactive=1",
+    };
+  }
+  // No subscription + no trial = lead state, shouldn't be making
+  // requests yet.
+  return {
+    ok: false,
+    reason: "Pick a plan first.",
+    redirect: "/billing?inactive=1",
+  };
+}
+
+/**
  * Returns true if `userId` is a member of `clientId`.
  */
 export async function userBelongsToClient(

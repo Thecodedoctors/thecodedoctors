@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { recordLead } from "@/lib/leads";
-import { rateLimit, clientKey } from "@/lib/rate-limit";
+import { clientKey } from "@/lib/rate-limit";
+import { checkRateLimit } from "@/lib/rate-limit-db";
 import { verifyTurnstile } from "@/lib/turnstile";
 import { sendCheckupReportEmail } from "@/lib/email";
 import type { CheckupReport } from "@/lib/checkup/types";
@@ -42,12 +43,19 @@ export async function POST(request: Request) {
     );
   }
 
+  // 4 leads per IP per 5 minutes. DB-backed so the limit holds across
+  // worker isolates.
   const ip = clientKey(request);
-  const limit = rateLimit(`lead:${ip}`, { capacity: 4, refillPerSecond: 4 / 300 });
-  if (!limit.allowed) {
+  const limit = await checkRateLimit({
+    scope: "lead",
+    bucket: ip,
+    limit: 4,
+    windowSeconds: 300,
+  });
+  if (!limit.ok) {
     return NextResponse.json(
       { error: "rate-limited", message: "Please wait a moment and try again." },
-      { status: 429, headers: { "Retry-After": String(Math.ceil(limit.resetMs / 1000)) } }
+      { status: 429, headers: { "Retry-After": String(limit.retryAfter) } }
     );
   }
 

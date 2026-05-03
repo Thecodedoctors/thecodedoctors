@@ -11,7 +11,10 @@ import {
 import { eq, asc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { requireUser, isStaff } from "@/lib/auth-helpers";
-import { userBelongsToClient } from "@/lib/clients";
+import {
+  userBelongsToClient,
+  requireActiveOrTrialing,
+} from "@/lib/clients";
 import { recordAudit } from "@/server/audit";
 import { dispatchEvent, membersOfClient } from "@/server/notifications";
 import {
@@ -46,6 +49,11 @@ export async function addMessage(
       title: requests.title,
       assignedDoctorId: requests.assignedDoctorId,
       clientName: clients.name,
+      clientStatus: clients.status,
+      clientTrialEndsAt: clients.trialEndsAt,
+      clientStripeSubscriptionId: clients.stripeSubscriptionId,
+      clientCancelAtPeriodEnd: clients.cancelAtPeriodEnd,
+      clientCurrentPeriodEnd: clients.currentPeriodEnd,
     })
     .from(requests)
     .innerJoin(clients, eq(clients.id, requests.clientId))
@@ -61,6 +69,19 @@ export async function addMessage(
       reqRows[0].clientId
     );
     if (!ok) return { ok: false, error: "Not authorized." };
+    // Trial expired / paused / discharged patients can read but
+    // can't post new messages. Staff (caregivers) are exempt — they
+    // need to be able to wrap up an open thread.
+    const eligibility = await requireActiveOrTrialing({
+      status: reqRows[0].clientStatus,
+      trialEndsAt: reqRows[0].clientTrialEndsAt,
+      stripeSubscriptionId: reqRows[0].clientStripeSubscriptionId,
+      cancelAtPeriodEnd: reqRows[0].clientCancelAtPeriodEnd,
+      currentPeriodEnd: reqRows[0].clientCurrentPeriodEnd,
+    });
+    if (!eligibility.ok) {
+      return { ok: false, error: eligibility.reason };
+    }
   }
 
   // Only staff can post internal notes.

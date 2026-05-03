@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/logo";
 import { db, users, isDbConfigured } from "@/db";
 import { resolvePortalRedirect } from "@/lib/portal-redirect";
+import { checkRateLimit } from "@/lib/rate-limit-db";
 
 export const metadata: Metadata = {
   title: "Sign in",
@@ -38,6 +39,21 @@ async function loginAction(formData: FormData): Promise<void> {
 
   if (!email) back("MissingEmail");
   if (password.length < 8) back("ShortPassword");
+
+  // Rate limit per email — 10 attempts in 15 minutes. Matches the
+  // SECURITY-POSTURE.md target. Fails OPEN if the DB is down so a
+  // transient Postgres blip doesn't lock the founder out. We
+  // intentionally use the email as the bucket (not the IP) so a
+  // shared-NAT office can't lock a real user out by accident, and
+  // an attacker spreading attempts across emails still has to pay
+  // password-verify CPU on each one.
+  const limited = await checkRateLimit({
+    scope: "login",
+    bucket: email,
+    limit: 10,
+    windowSeconds: 900, // 15 min
+  });
+  if (!limited.ok) back("RateLimited");
 
   // Pre-check suspended / deleted state so the user gets accurate copy
   // instead of a generic "wrong password." Trade-off: this leaks
@@ -243,6 +259,8 @@ function errorCopy(code: string): string {
       return "This account is suspended. Reach out to hello@thecodedoctors.com if you think this is a mistake.";
     case "Deleted":
       return "This account has been closed. Reach out to hello@thecodedoctors.com if you need to reopen it.";
+    case "RateLimited":
+      return "Too many sign-in attempts. Wait 15 minutes and try again, or reset your password.";
     case "TotpRequired":
       return "Almost in — enter the 6-digit code from your authenticator app, or a recovery code if you've lost your device.";
     case "TotpInvalid":

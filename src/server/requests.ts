@@ -16,6 +16,7 @@ import { requireUser, requireStaff, isStaff } from "@/lib/auth-helpers";
 import {
   getOrCreateClientForUser,
   userBelongsToClient,
+  requireActiveOrTrialing,
 } from "@/lib/clients";
 import { recordAudit } from "@/server/audit";
 import {
@@ -85,6 +86,18 @@ export async function createRequest(
     name: session.user.name,
     email: session.user.email,
   });
+
+  // Trial-expired / paused / discharged patients can't open new
+  // requests. The patient billing banner already prompts them; this
+  // is the server-side enforcement (the banner alone wasn't a gate).
+  // Staff are exempt — they create requests on behalf of patients
+  // through the same path.
+  if (!isStaff(session.user.role)) {
+    const eligibility = await requireActiveOrTrialing(client);
+    if (!eligibility.ok) {
+      return { ok: false, error: eligibility.reason };
+    }
+  }
 
   const row: NewRequest = {
     clientId: client.id,

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { runCheckup, CheckupValidationError, validationErrorResponse } from "@/lib/checkup/scanner";
-import { rateLimit, clientKey } from "@/lib/rate-limit";
+import { clientKey } from "@/lib/rate-limit";
+import { checkRateLimit } from "@/lib/rate-limit-db";
 import { verifyTurnstile } from "@/lib/turnstile";
 
 export const runtime = "nodejs"; // node:dns + buffered fetch require Node, not Edge.
@@ -24,10 +25,19 @@ export async function POST(request: Request) {
     );
   }
 
-  // Rate limit before doing any expensive work.
+  // Rate limit before doing any expensive work. DB-backed because the
+  // worker isolate's in-memory state isn't shared across cold starts.
+  // 6 hits per minute per IP — generous enough that a real user
+  // mistyping a URL doesn't get locked out, tight enough that a bot
+  // can't burn our PageSpeed Insights quota.
   const ip = clientKey(request);
-  const limit = rateLimit(`checkup:${ip}`, { capacity: 6, refillPerSecond: 6 / 60 });
-  if (!limit.allowed) {
+  const limit = await checkRateLimit({
+    scope: "checkup",
+    bucket: ip,
+    limit: 6,
+    windowSeconds: 60,
+  });
+  if (!limit.ok) {
     return NextResponse.json(
       {
         error: "rate-limited",
@@ -35,9 +45,7 @@ export async function POST(request: Request) {
       },
       {
         status: 429,
-        headers: {
-          "Retry-After": String(Math.ceil(limit.resetMs / 1000)),
-        },
+        headers: { "Retry-After": String(limit.retryAfter) },
       }
     );
   }

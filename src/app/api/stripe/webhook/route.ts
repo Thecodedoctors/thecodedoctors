@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type Stripe from "stripe";
-import { db, clients } from "@/db";
+import { db, clients, webhookEvents } from "@/db";
 import { eq } from "drizzle-orm";
 import { getStripe } from "@/lib/stripe";
 import { recordAudit } from "@/server/audit";
@@ -43,6 +43,36 @@ export async function POST(req: Request) {
   } catch (err) {
     console.error("[stripe-webhook] signature verification failed", err);
     return new NextResponse("Invalid signature", { status: 400 });
+  }
+
+  // Idempotency: refuse to process the same event id twice. Stripe
+  // legitimately retries on 5xx and on transient network blips; without
+  // this guard, a retry doubles up the side-effects (duplicate emails,
+  // status flips, notifications). Inserting first means racing
+  // duplicate webhooks both lose-fast on the unique key.
+  try {
+    await db().insert(webhookEvents).values({
+      id: event.id,
+      source: "stripe",
+      eventType: event.type,
+    });
+  } catch (err) {
+    // Unique-constraint violation = we've handled this one already.
+    // Any other error surfaces as a 500 so Stripe retries.
+    const code =
+      typeof (err as { code?: unknown }).code === "string"
+        ? (err as { code: string }).code
+        : "";
+    if (
+      code === "23505" ||
+      String((err as { message?: unknown }).message ?? "").includes(
+        "duplicate key"
+      )
+    ) {
+      return NextResponse.json({ received: true, dedup: true });
+    }
+    console.error("[stripe-webhook] event-ledger insert failed", err);
+    return new NextResponse("Internal error", { status: 500 });
   }
 
   try {

@@ -292,6 +292,48 @@ export const incidents = pgTable(
 );
 
 /**
+ * Tiny rate-limit counter — one row per (key, window-start). Keys are
+ * scoped strings like `login:user@example.com` or `checkup:1.2.3.4`.
+ * The check + increment is a single upsert, so it works across worker
+ * isolates (in-memory rate limiters don't, on Cloudflare).
+ *
+ * Cleared by the next cron pass — we don't need rows older than the
+ * largest window we use.
+ */
+export const rateLimitCounters = pgTable(
+  "rate_limit_counter",
+  {
+    /** Compound key: `<scope>:<bucket>:<window-start-epoch-seconds>`. */
+    key: text("key").primaryKey(),
+    count: integer("count").notNull().default(0),
+    expiresAt: timestamp("expires_at", { mode: "date" }).notNull(),
+  },
+  (t) => [index("rate_limit_expires_idx").on(t.expiresAt)]
+);
+
+/**
+ * Webhook event ledger — records every Stripe event id we've already
+ * processed so a retry (which Stripe legitimately does on 5xx + on
+ * transient network blips) doesn't fire side-effects twice. Insert
+ * the event id at the top of POST; if it conflicts on the unique PK,
+ * we know we've seen it before and short-circuit.
+ *
+ * Cleared periodically by a cron job — we don't need history older
+ * than ~30 days.
+ */
+export const webhookEvents = pgTable(
+  "webhook_event",
+  {
+    /** The Stripe `event.id` (or another provider id). */
+    id: text("id").primaryKey(),
+    source: text("source").notNull().default("stripe"),
+    eventType: text("event_type").notNull(),
+    receivedAt: timestamp("received_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [index("webhook_event_received_idx").on(t.receivedAt)]
+);
+
+/**
  * Doctor-requested credentials. The founder asks for sensitive things
  * (hosting login, registrar access, API keys, etc.); the patient
  * submits values via /dashboard/credentials; we encrypt the bundle
