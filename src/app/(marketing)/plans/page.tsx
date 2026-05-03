@@ -4,6 +4,14 @@ import { FAQ } from "@/components/faq";
 import { Section } from "@/components/ui/section";
 
 export const metadata: Metadata = {
+  openGraph: {
+    title: "Treatment Plans",
+    description: "Pick a plan and we handle the rest. General Care for steady upkeep, Premium Care when uptime matters. One flat monthly fee.",
+  },
+  twitter: {
+    title: "Treatment Plans",
+    description: "Pick a plan and we handle the rest. General Care for steady upkeep, Premium Care when uptime matters. One flat monthly fee.",
+  },
   title: "Treatment Plans",
   description:
     "Flat monthly fees. No surprise hours, no upsells. Cancel anytime.",

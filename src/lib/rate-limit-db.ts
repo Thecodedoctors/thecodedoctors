@@ -52,11 +52,21 @@ export async function checkRateLimit({
       .onConflictDoUpdate({
         target: rateLimitCounters.key,
         set: {
-          count: sql`${rateLimitCounters.count} + 1`,
+          // Note: `excluded.count` always equals 1 (the new value
+          // being "inserted"). To reference the EXISTING row's count
+          // we use the qualified column expression. Some Drizzle/
+          // Postgres adapter combos render `${table.col}` in a way
+          // that doesn't survive the ON CONFLICT context — using
+          // `sql.raw` with the literal column name sidesteps that
+          // ambiguity.
+          count: sql.raw(`"rate_limit_counter"."count" + 1`),
         },
       })
       .returning({ count: rateLimitCounters.count });
     count = rows[0]?.count ?? 1;
+    // TEMP debug log — remove once rate limit is verified working in
+    // production (just observable noise in `wrangler tail`).
+    console.log("[rate-limit]", key, "→ count=" + count + " / limit=" + limit, "rows.len=" + rows.length);
   } catch (err) {
     // If the rate-limit table doesn't exist yet (migration pending)
     // or the DB is transiently down, fail OPEN — better to let a

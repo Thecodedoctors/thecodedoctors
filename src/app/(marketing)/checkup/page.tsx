@@ -3,6 +3,14 @@ import { Section } from "@/components/ui/section";
 import { DiagnosticTool } from "@/components/diagnostic-tool";
 
 export const metadata: Metadata = {
+  openGraph: {
+    title: "Free Checkup",
+    description: "Diagnose your site in 60 seconds — security headers, performance, DNS posture, trackers. Clear report, no email required.",
+  },
+  twitter: {
+    title: "Free Checkup",
+    description: "Diagnose your site in 60 seconds — security headers, performance, DNS posture, trackers. Clear report, no email required.",
+  },
   title: "Free Checkup",
   description:
     "Enter your URL and we'll diagnose performance, SEO, security headers, mobile health, and broken links — in 60 seconds.",

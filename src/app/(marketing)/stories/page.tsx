@@ -4,6 +4,14 @@ import { FinalCTA } from "@/components/final-cta";
 import { Section } from "@/components/ui/section";
 
 export const metadata: Metadata = {
+  openGraph: {
+    title: "Patient Stories",
+    description: "Sites we have put back on their feet. Diagnosis, prescription, treatment, recovery — in the patients own words.",
+  },
+  twitter: {
+    title: "Patient Stories",
+    description: "Sites we have put back on their feet. Diagnosis, prescription, treatment, recovery — in the patients own words.",
+  },
   title: "Patient Stories",
   description:
     "Real sites, real recoveries. Before-and-after numbers from our practice.",

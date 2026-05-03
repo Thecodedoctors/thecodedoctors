@@ -6,6 +6,14 @@ import { FinalCTA } from "@/components/final-cta";
 import { Section } from "@/components/ui/section";
 
 export const metadata: Metadata = {
+  openGraph: {
+    title: "Services",
+    description: "Treatments for the whole site — security hardening, performance tuning, ongoing maintenance, full rebuilds.",
+  },
+  twitter: {
+    title: "Services",
+    description: "Treatments for the whole site — security hardening, performance tuning, ongoing maintenance, full rebuilds.",
+  },
   title: "Services",
   description:
     "Performance, security, SEO, uptime, redesigns, and managed hosting — under one practice.",

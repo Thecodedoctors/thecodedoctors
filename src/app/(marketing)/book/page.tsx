@@ -5,6 +5,14 @@ import { Mail } from "lucide-react";
 import { site } from "@/lib/site";
 
 export const metadata: Metadata = {
+  openGraph: {
+    title: "Book a Doctor",
+    description: "Talk to one of our doctors. Diagnose your site, get a prescription, decide if we are a fit.",
+  },
+  twitter: {
+    title: "Book a Doctor",
+    description: "Talk to one of our doctors. Diagnose your site, get a prescription, decide if we are a fit.",
+  },
   title: "Book a Doctor",
   description:
     "Talk to one of our doctors. Free 30-minute call. No commitment.",

@@ -4,6 +4,14 @@ import { TrustStrip } from "@/components/trust-strip";
 import { Section } from "@/components/ui/section";
 
 export const metadata: Metadata = {
+  openGraph: {
+    title: "About The Code Doctors",
+    description: "A small practice of doctors who treat websites like patients — calm, careful, and on call.",
+  },
+  twitter: {
+    title: "About The Code Doctors",
+    description: "A small practice of doctors who treat websites like patients — calm, careful, and on call.",
+  },
   title: "About",
   description:
     "A small practice of five doctors. We answer our own messages. We keep our promises in writing.",
