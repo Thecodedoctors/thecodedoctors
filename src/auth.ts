@@ -7,6 +7,7 @@ import { eq } from "drizzle-orm";
 import { db, isDbConfigured, users } from "@/db";
 import { verifyPassword } from "@/lib/password";
 import { verifyTotpForLogin } from "@/server/two-factor";
+import { checkRateLimit } from "@/lib/rate-limit-db";
 
 /**
  * Auth.js v5 wired to Drizzle.
@@ -55,6 +56,22 @@ class TotpRequiredError extends CredentialsSignin {
 class TotpInvalidError extends CredentialsSignin {
   code = "TotpInvalid";
 }
+class RateLimitedError extends CredentialsSignin {
+  code = "RateLimited";
+}
+
+/** Pull the real client IP from a Cloudflare-fronted request. Falls
+ *  back to nothing if the request object isn't available (e.g. tests). */
+function clientIpFromRequest(req: Request | undefined): string | null {
+  if (!req) return null;
+  const h = req.headers;
+  return (
+    h.get("cf-connecting-ip") ??
+    h.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    h.get("x-real-ip") ??
+    null
+  );
+}
 
 /**
  * In production we set the cookie Domain to `.thecodedoctors.com` so the same
@@ -82,12 +99,36 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         password: { label: "Password", type: "password" },
         totpCode: { label: "Authenticator code", type: "text" },
       },
-      async authorize(creds) {
+      async authorize(creds, request) {
         const email = String(creds?.email ?? "").trim().toLowerCase();
         const password = String(creds?.password ?? "");
         const totpCode = String(creds?.totpCode ?? "");
         if (!email || !password || password.length < 8) return null;
         if (!isDbConfigured()) return null;
+
+        // Rate limit — applies to BOTH the form-action path and the
+        // direct /api/auth/callback/credentials hit (which is what an
+        // attacker would target). Email-bucket at 10/15min matches
+        // SECURITY-POSTURE.md; we also IP-bucket at 50/15min so a
+        // distributed credential-stuffing campaign across emails still
+        // gets throttled. Fails open if the DB is down.
+        const ip = clientIpFromRequest(request);
+        const emailLimit = await checkRateLimit({
+          scope: "login",
+          bucket: email,
+          limit: 10,
+          windowSeconds: 900,
+        });
+        if (!emailLimit.ok) throw new RateLimitedError();
+        if (ip) {
+          const ipLimit = await checkRateLimit({
+            scope: "login_ip",
+            bucket: ip,
+            limit: 50,
+            windowSeconds: 900,
+          });
+          if (!ipLimit.ok) throw new RateLimitedError();
+        }
 
         // Sign-in only — accounts are created via /trial or /start
         // (commitment-driven onboarding). Login does NOT auto-create.

@@ -9,7 +9,6 @@ import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/logo";
 import { db, users, isDbConfigured } from "@/db";
 import { resolvePortalRedirect } from "@/lib/portal-redirect";
-import { checkRateLimit } from "@/lib/rate-limit-db";
 
 export const metadata: Metadata = {
   title: "Sign in",
@@ -40,20 +39,10 @@ async function loginAction(formData: FormData): Promise<void> {
   if (!email) back("MissingEmail");
   if (password.length < 8) back("ShortPassword");
 
-  // Rate limit per email — 10 attempts in 15 minutes. Matches the
-  // SECURITY-POSTURE.md target. Fails OPEN if the DB is down so a
-  // transient Postgres blip doesn't lock the founder out. We
-  // intentionally use the email as the bucket (not the IP) so a
-  // shared-NAT office can't lock a real user out by accident, and
-  // an attacker spreading attempts across emails still has to pay
-  // password-verify CPU on each one.
-  const limited = await checkRateLimit({
-    scope: "login",
-    bucket: email,
-    limit: 10,
-    windowSeconds: 900, // 15 min
-  });
-  if (!limited.ok) back("RateLimited");
+  // Rate limiting moved into `authorize()` in `src/auth.ts` so it
+  // covers BOTH this form action AND direct hits to
+  // /api/auth/callback/credentials (which an attacker would target).
+  // The login form here just relays the error code via Auth.js.
 
   // Pre-check suspended / deleted state so the user gets accurate copy
   // instead of a generic "wrong password." Trade-off: this leaks
@@ -95,6 +84,7 @@ async function loginAction(formData: FormData): Promise<void> {
         ((err as { cause?: { err?: { code?: string } } }).cause?.err?.code ?? "");
       if (code === "TotpRequired") back("TotpRequired");
       if (code === "TotpInvalid") back("TotpInvalid");
+      if (code === "RateLimited") back("RateLimited");
       back("Credentials");
     }
     throw err;
