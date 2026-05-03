@@ -12,10 +12,8 @@ import { Section } from "@/components/ui/section";
 import {
   listAllClientsForStaff,
   clientCountsByStatus,
-  type ClientListRow,
 } from "@/server/clients";
 import { auth } from "@/auth";
-import type { Session } from "next-auth";
 import { formatRelativeAgo } from "@/lib/time";
 import { cn } from "@/lib/cn";
 
@@ -40,20 +38,11 @@ export default async function PatientsPage({
   const status = params.status ?? "active";
   const sort = params.sort ?? "name";
 
-  // TEMP: capture and surface raw errors so we can debug the production 500.
-  // Once we know the cause we'll restore the unconditional Promise.all().
-  let session: Session | null;
-  let rows: ClientListRow[];
-  let counts: Awaited<ReturnType<typeof clientCountsByStatus>>;
-  try {
-    [session, rows, counts] = await Promise.all([
-      auth() as Promise<Session | null>,
-      listAllClientsForStaff({ q, status, sort }),
-      clientCountsByStatus(),
-    ]);
-  } catch (err) {
-    return <DebugError err={err} stage="data fetch" />;
-  }
+  const [session, rows, counts] = await Promise.all([
+    auth(),
+    listAllClientsForStaff({ q, status, sort }),
+    clientCountsByStatus(),
+  ]);
 
   const isFounder = session?.user?.role === "founder";
 
@@ -175,75 +164,78 @@ function PatientRow({
   client: Awaited<ReturnType<typeof listAllClientsForStaff>>[number];
   showMrr: boolean;
 }) {
+  // Stretched-link pattern: the row's Link covers the whole tile via
+  // absolute positioning, while the website-URL <a> sits at z-10 above
+  // it. This avoids the (illegal) nested anchors and the
+  // server-component onClick we previously used to stop propagation.
   return (
-    <li>
+    <li className="group relative px-5 py-4 transition-colors hover:bg-surface/80">
       <Link
         href={`/clients/${client.id}`}
-        className="block px-5 py-4 transition-colors hover:bg-surface/80"
-      >
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-baseline gap-2">
-              <h3 className="text-base font-medium text-foreground">
-                {client.name}
-              </h3>
-              <StatusBadge status={client.status} />
-              <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-accent">
-                {planLabel(client.plan)}
-              </span>
-            </div>
-            <div className="mt-1.5 flex flex-wrap items-center gap-3 text-xs text-muted">
-              {client.primaryUserName && (
-                <span>
-                  <span className="text-foreground">{client.primaryUserName}</span>
-                  {client.primaryUserEmail ? ` · ${client.primaryUserEmail}` : ""}
-                </span>
-              )}
-              {client.websiteUrl && (
-                <a
-                  href={client.websiteUrl}
-                  target="_blank"
-                  rel="noopener noreferrer external"
-                  onClick={(e) => e.stopPropagation()}
-                  className="inline-flex items-center gap-1 font-mono underline decoration-border-strong underline-offset-4 hover:decoration-signal"
-                >
-                  {safeHost(client.websiteUrl)}
-                  <ExternalLink className="h-3 w-3" />
-                </a>
-              )}
-            </div>
-            <div className="mt-2 flex flex-wrap items-center gap-3 font-mono text-[11px] text-muted">
-              <span>
-                <span className="text-foreground">{client.openRequests}</span>{" "}
-                open · {client.totalRequests} total
-              </span>
-              {client.lastActivityAt && (
-                <span>
-                  Last activity {formatRelativeAgo(client.lastActivityAt)}
-                </span>
-              )}
-              <span>
-                Joined{" "}
-                {new Date(client.createdAt).toLocaleDateString(undefined, {
-                  month: "short",
-                  year: "numeric",
-                })}
-              </span>
-            </div>
+        aria-label={`View ${client.name}`}
+        className="absolute inset-0 z-0"
+      />
+      <div className="relative z-10 flex flex-wrap items-start justify-between gap-3 pointer-events-none">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-baseline gap-2">
+            <h3 className="text-base font-medium text-foreground">
+              {client.name}
+            </h3>
+            <StatusBadge status={client.status} />
+            <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-accent">
+              {planLabel(client.plan)}
+            </span>
           </div>
-          {showMrr && client.mrrCents > 0 && (
-            <div className="text-right">
-              <p className="font-mono text-base font-semibold text-foreground">
-                ${(client.mrrCents / 100).toFixed(0)}
-                <span className="text-xs text-muted">/mo</span>
-              </p>
-              <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
-                MRR
-              </p>
-            </div>
-          )}
+          <div className="mt-1.5 flex flex-wrap items-center gap-3 text-xs text-muted">
+            {client.primaryUserName && (
+              <span>
+                <span className="text-foreground">{client.primaryUserName}</span>
+                {client.primaryUserEmail ? ` · ${client.primaryUserEmail}` : ""}
+              </span>
+            )}
+            {client.websiteUrl && (
+              <a
+                href={client.websiteUrl}
+                target="_blank"
+                rel="noopener noreferrer external"
+                className="pointer-events-auto inline-flex items-center gap-1 font-mono underline decoration-border-strong underline-offset-4 hover:decoration-signal"
+              >
+                {safeHost(client.websiteUrl)}
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            )}
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-3 font-mono text-[11px] text-muted">
+            <span>
+              <span className="text-foreground">{client.openRequests}</span>{" "}
+              open · {client.totalRequests} total
+            </span>
+            {client.lastActivityAt && (
+              <span>
+                Last activity {formatRelativeAgo(client.lastActivityAt)}
+              </span>
+            )}
+            <span>
+              Joined{" "}
+              {new Date(client.createdAt).toLocaleDateString(undefined, {
+                month: "short",
+                year: "numeric",
+              })}
+            </span>
+          </div>
         </div>
-      </Link>
+        {showMrr && client.mrrCents > 0 && (
+          <div className="text-right">
+            <p className="font-mono text-base font-semibold text-foreground">
+              ${(client.mrrCents / 100).toFixed(0)}
+              <span className="text-xs text-muted">/mo</span>
+            </p>
+            <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
+              MRR
+            </p>
+          </div>
+        )}
+      </div>
     </li>
   );
 }
@@ -360,28 +352,4 @@ function safeHost(url: string): string {
   } catch {
     return url;
   }
-}
-
-/** TEMP debug surface — print real error info inline, bypassing Next.js's
- *  production sanitization. Server-rendered JSX so message + stack pass
- *  straight through to the browser. Remove once we've fixed the 500. */
-function DebugError({ err, stage }: { err: unknown; stage: string }) {
-  const e = err as { name?: string; message?: string; stack?: string; cause?: unknown; digest?: string };
-  return (
-    <Section size="md" reveal={false}>
-      <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-signal">
-        Patients · debug
-      </p>
-      <h1 className="mt-2 text-2xl font-semibold tracking-tight">
-        Error during {stage}
-      </h1>
-      <pre className="mt-6 overflow-x-auto whitespace-pre-wrap break-all rounded-2xl border border-signal/30 bg-signal/5 p-5 font-mono text-xs text-foreground">
-        <strong className="text-signal">{e.name ?? "Error"}:</strong>{" "}
-        {e.message ?? String(err)}
-        {e.digest && `\n\ndigest: ${e.digest}`}
-        {e.cause ? `\n\ncause: ${JSON.stringify(e.cause, null, 2)}` : ""}
-        {e.stack && `\n\n${e.stack}`}
-      </pre>
-    </Section>
-  );
 }
