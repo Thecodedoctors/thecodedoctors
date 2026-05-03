@@ -3,10 +3,11 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Mail, Lock, ArrowRight } from "lucide-react";
 import { AuthError } from "next-auth";
+import { eq } from "drizzle-orm";
 import { signIn, auth } from "@/auth";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/logo";
-import { isDbConfigured } from "@/db";
+import { db, users, isDbConfigured } from "@/db";
 import { resolvePortalRedirect } from "@/lib/portal-redirect";
 
 export const metadata: Metadata = {
@@ -23,7 +24,7 @@ export const metadata: Metadata = {
  */
 async function loginAction(formData: FormData): Promise<void> {
   "use server";
-  const email = String(formData.get("email") ?? "").trim();
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
   const next = String(formData.get("next") ?? "/dashboard") || "/dashboard";
 
@@ -34,6 +35,31 @@ async function loginAction(formData: FormData): Promise<void> {
 
   if (!email) back("MissingEmail");
   if (password.length < 8) back("ShortPassword");
+
+  // Pre-check suspended / deleted state so the user gets accurate copy
+  // instead of a generic "wrong password." Trade-off: this leaks
+  // existence + state for that email — acceptable here because we're
+  // not in an enumeration-sensitive context (patients aren't a target
+  // for credential-stuffing campaigns at this scale).
+  if (isDbConfigured()) {
+    try {
+      const rows = await db()
+        .select({
+          suspendedAt: users.suspendedAt,
+          deletedAt: users.deletedAt,
+        })
+        .from(users)
+        .where(eq(users.email, email))
+        .limit(1);
+      const u = rows[0];
+      if (u?.deletedAt) back("Deleted");
+      if (u?.suspendedAt) back("Suspended");
+    } catch {
+      // If the lookup fails (transient DB error), fall through to the
+      // normal sign-in path — they'll get a generic error on the real
+      // attempt, which is the safe default.
+    }
+  }
 
   try {
     await signIn("credentials", {
@@ -180,6 +206,8 @@ function errorCopy(code: string): string {
       return "Password must be at least 8 characters.";
     case "Suspended":
       return "This account is suspended. Reach out to hello@thecodedoctors.com if you think this is a mistake.";
+    case "Deleted":
+      return "This account has been closed. Reach out to hello@thecodedoctors.com if you need to reopen it.";
     default:
       return "We couldn't sign you in. Try again, or reach out to hello@thecodedoctors.com.";
   }
