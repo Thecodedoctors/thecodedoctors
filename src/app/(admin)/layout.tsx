@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { AppShell } from "@/components/portal/app-shell";
+import { APP_HOME } from "@/lib/portal-redirect";
 
 const STAFF_ROLES = new Set([
   "doctor",
@@ -26,7 +27,7 @@ export default async function AdminLayout({
     redirect("/login?next=/admin");
   }
   if (!STAFF_ROLES.has(session.user.role ?? "client")) {
-    redirect("/dashboard");
+    redirect(APP_HOME);
   }
 
   return (

@@ -6,6 +6,7 @@ import { AuthError } from "next-auth";
 import { signIn, auth } from "@/auth";
 import { Button } from "@/components/ui/button";
 import { isDbConfigured } from "@/db";
+import { resolvePortalRedirect } from "@/lib/portal-redirect";
 
 export const metadata: Metadata = {
   title: "Sign in",
@@ -62,9 +63,9 @@ export default async function LoginPage({
   const next = params.next ?? "/dashboard";
 
   if (session?.user) {
-    redirect(
-      session.user.role && session.user.role !== "client" ? "/admin" : next
-    );
+    const target =
+      session.user.role && session.user.role !== "client" ? "/admin" : next;
+    redirect(resolvePortalRedirect(target));
   }
 
   const dbReady = isDbConfigured();

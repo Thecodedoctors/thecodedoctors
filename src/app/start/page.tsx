@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { Stethoscope, CheckCircle2, ShieldCheck } from "lucide-react";
 import { auth } from "@/auth";
 import { OnboardForm } from "@/components/onboard-form";
+import { ADMIN_HOME, APP_HOME } from "@/lib/portal-redirect";
 
 export const metadata: Metadata = {
   title: "Start care",
@@ -56,7 +57,7 @@ export default async function StartPage({
 }) {
   const session = await auth();
   if (session?.user) {
-    redirect(session.user.role === "client" ? "/dashboard" : "/admin");
+    redirect(session.user.role === "client" ? APP_HOME : ADMIN_HOME);
   }
 
   const params = await searchParams;

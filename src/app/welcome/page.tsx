@@ -8,6 +8,7 @@ import {
   signInFromWelcome,
 } from "@/server/onboard-finalize";
 import { Button } from "@/components/ui/button";
+import { ADMIN_HOME, APP_HOME } from "@/lib/portal-redirect";
 
 export const metadata: Metadata = {
   title: "Welcome",
@@ -42,7 +43,7 @@ export default async function WelcomePage({
   // If they're somehow already signed in, send them home.
   const session = await auth();
   if (session?.user) {
-    redirect(session.user.role === "client" ? "/dashboard" : "/admin");
+    redirect(session.user.role === "client" ? APP_HOME : ADMIN_HOME);
   }
 
   const { session_id } = await searchParams;

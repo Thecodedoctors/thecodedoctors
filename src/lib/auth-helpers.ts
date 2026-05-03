@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import type { Session as NextAuthSession } from "next-auth";
+import { ADMIN_HOME, APP_HOME } from "@/lib/portal-redirect";
 
 export type Session = NextAuthSession;
 export type SessionUser = Session["user"];
@@ -34,25 +35,26 @@ export async function requireUser(redirectTo?: string): Promise<Session> {
 }
 
 /**
- * Server-side guard for client-only routes. Staff get bounced to /admin
- * (which on production redirects to admin.thecodedoctors.com via proxy.ts).
+ * Server-side guard for client-only routes. Staff get bounced to the admin
+ * portal (absolute URL in prod — relative redirects stay on the current
+ * subdomain and end up 404'd by the host-rewrite middleware).
  */
 export async function requireClient(redirectTo?: string): Promise<Session> {
   const session = await requireUser(redirectTo);
   if (isStaff(session.user.role)) {
-    redirect("/admin");
+    redirect(ADMIN_HOME);
   }
   return session;
 }
 
 /**
- * Server-side guard for staff-only routes. Clients get bounced to /dashboard
- * (which on production redirects to app.thecodedoctors.com via proxy.ts).
+ * Server-side guard for staff-only routes. Clients get bounced to the
+ * patient portal (absolute URL in prod for the same reason as above).
  */
 export async function requireStaff(redirectTo?: string): Promise<Session> {
   const session = await requireUser(redirectTo);
   if (!isStaff(session.user.role)) {
-    redirect("/dashboard");
+    redirect(APP_HOME);
   }
   return session;
 }

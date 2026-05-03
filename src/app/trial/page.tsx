@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { Stethoscope, ShieldCheck, Activity, MessageCircle } from "lucide-react";
 import { auth } from "@/auth";
 import { OnboardForm } from "@/components/onboard-form";
+import { ADMIN_HOME, APP_HOME } from "@/lib/portal-redirect";
 
 export const metadata: Metadata = {
   title: "Start your free trial",
@@ -22,7 +23,7 @@ export default async function TrialPage({
   // If they're already signed in, send them home.
   const session = await auth();
   if (session?.user) {
-    redirect(session.user.role === "client" ? "/dashboard" : "/admin");
+    redirect(session.user.role === "client" ? APP_HOME : ADMIN_HOME);
   }
 
   const { email, url, ref } = await searchParams;
