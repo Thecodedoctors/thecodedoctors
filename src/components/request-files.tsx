@@ -41,7 +41,9 @@ export async function RequestFiles({
       ) : (
         <ul className="divide-y divide-border/60 overflow-hidden rounded-2xl border border-border bg-surface/40">
           {files.map((f) => {
-            const canDelete = isStaff || f.uploaderUserId === viewer.id;
+            // Only staff can delete attachments — every uploaded file is
+            // part of the request's medical record. Patients keep theirs.
+            const canDelete = isStaff;
             const Icon = iconForType(f.contentType);
             return (
               <li

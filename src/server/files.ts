@@ -206,13 +206,17 @@ export async function uploadFilesToRequest(
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
-   Delete — server action (only the uploader OR staff can delete)
+   Delete — server action (staff only)
    ──────────────────────────────────────────────────────────────────────── */
 
 export async function deleteFile(formData: FormData): Promise<void> {
   const session = await requireUser();
   const fileId = String(formData.get("fileId") ?? "");
   if (!fileId) return;
+
+  // Only staff can delete attachments. Patients can't remove their own
+  // uploads — every file in a thread is part of the medical record.
+  if (!isStaff(session.user.role)) return;
 
   const rows = await db()
     .select()
@@ -221,16 +225,7 @@ export async function deleteFile(formData: FormData): Promise<void> {
     .limit(1);
   if (rows.length === 0) return;
   const file = rows[0];
-
-  const staff = isStaff(session.user.role);
-  if (!staff && file.uploaderUserId !== session.user.id) return;
-
-  // Authorize on the request itself too
   const requestId = file.requestId;
-  if (requestId) {
-    const ok = await canAccessRequest(session.user.id, session.user.role, requestId);
-    if (!ok) return;
-  }
 
   // Delete from R2 first; if that fails, leave the row so we can retry.
   const bucket = await getUploadsBucket();
