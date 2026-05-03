@@ -219,6 +219,45 @@ export const clientMembers = pgTable(
   (t) => [primaryKey({ columns: [t.clientId, t.userId] })]
 );
 
+/**
+ * Per-patient monthly reports. Authored by a doctor (status `draft`
+ * until they hit publish), then frozen + emailed to the patient.
+ *
+ * Patients see only `published` reports under /dashboard/reports.
+ * Doctors see every state on /admin/reports.
+ */
+export const monthlyReports = pgTable(
+  "monthly_report",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    clientId: text("client_id")
+      .notNull()
+      .references(() => clients.id, { onDelete: "cascade" }),
+    authorUserId: text("author_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    /** Title shown in the listing. Defaults to the period label
+     *  ("January 2026") if the doctor leaves it blank. */
+    title: text("title").notNull().default(""),
+    /** Markdown-ish body — we render with a tight whitelist client-side. */
+    body: text("body").notNull().default(""),
+    /** Reporting period — anchors on calendar months but the doctor
+     *  can override (e.g. "first 30 days of care"). */
+    periodStart: timestamp("period_start", { mode: "date" }).notNull(),
+    periodEnd: timestamp("period_end", { mode: "date" }).notNull(),
+    /** Set when the doctor publishes. Patients only see published rows. */
+    publishedAt: timestamp("published_at", { mode: "date" }),
+    createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("monthly_report_client_idx").on(t.clientId),
+    index("monthly_report_published_idx").on(t.publishedAt),
+  ]
+);
+
 export const requests = pgTable(
   "request",
   {
@@ -550,6 +589,8 @@ export type NotificationPreference = typeof notificationPreferences.$inferSelect
 export type NewNotificationPreference = typeof notificationPreferences.$inferInsert;
 export type HealthCheck = typeof healthChecks.$inferSelect;
 export type NewHealthCheck = typeof healthChecks.$inferInsert;
+export type MonthlyReport = typeof monthlyReports.$inferSelect;
+export type NewMonthlyReport = typeof monthlyReports.$inferInsert;
 
 // Suppress unused-import warning for `sql` (kept for future migration helpers).
 void sql;

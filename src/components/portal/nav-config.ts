@@ -7,11 +7,12 @@ import {
   BookOpen,
   Users,
   ShieldCheck,
-  BarChart3,
   Activity,
   Bell,
   Sparkles,
   Settings,
+  FileText,
+  LineChart,
 } from "lucide-react";
 
 export type NavItem = {
@@ -34,6 +35,7 @@ export const CLIENT_NAV: NavSection[] = [
       { href: "/", label: "Hub", icon: Home },
       { href: "/requests", label: "Requests", icon: ListChecks },
       { href: "/health", label: "Site health", icon: HeartPulse },
+      { href: "/reports", label: "Reports", icon: FileText },
       { href: "/billing", label: "Billing", icon: CreditCard },
       { href: "/knowledge", label: "Knowledge", icon: BookOpen },
     ],
@@ -61,7 +63,8 @@ export const ADMIN_NAV: NavSection[] = [
   {
     heading: "Operations",
     items: [
-      { href: "/reports", label: "Reports", icon: BarChart3 },
+      { href: "/reports", label: "Reports", icon: FileText },
+      { href: "/insights", label: "Insights", icon: LineChart },
       { href: "/audit", label: "Audit log", icon: ShieldCheck },
       { href: "/runbooks", label: "Runbooks", icon: BookOpen },
     ],
