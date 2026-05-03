@@ -1,14 +1,13 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { Bell, CheckCheck, Trash2 } from "lucide-react";
 import {
   listNotificationsForCurrentUser,
-  markNotificationRead,
   markAllNotificationsRead,
   deleteNotifications,
 } from "@/server/notifications";
 import { Section } from "@/components/ui/section";
 import { Button } from "@/components/ui/button";
+import { NotificationLink } from "@/components/dashboard/notification-link";
 import { formatRelativeAgo } from "@/lib/time";
 import { cn } from "@/lib/cn";
 
@@ -122,44 +121,3 @@ export default async function NotificationsPage() {
   );
 }
 
-/**
- * Clicking a notification both navigates to the target and marks it read.
- * We render a real <Link> for navigation and a hidden form for the read.
- */
-function NotificationLink({
-  id,
-  href,
-  unread,
-  children,
-}: {
-  id: string;
-  href: string;
-  unread: boolean;
-  children: React.ReactNode;
-}) {
-  if (!unread) return <Link href={href}>{children}</Link>;
-
-  return (
-    <form
-      action={async () => {
-        "use server";
-        const fd = new FormData();
-        fd.set("id", id);
-        await markNotificationRead(fd);
-      }}
-      className="contents"
-    >
-      <Link
-        href={href}
-        onClick={(e) => {
-          // The click navigates; the read happens server-side via the form
-          // submit. We submit the form imperatively before navigation by
-          // dispatching it. Acceptable on a non-critical UX.
-          (e.currentTarget.closest("form") as HTMLFormElement)?.requestSubmit();
-        }}
-      >
-        {children}
-      </Link>
-    </form>
-  );
-}

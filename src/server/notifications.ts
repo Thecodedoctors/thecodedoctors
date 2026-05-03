@@ -233,9 +233,16 @@ export async function unreadCountForCurrentUser(): Promise<number> {
 
 /** Mark a single notification as read. */
 export async function markNotificationRead(formData: FormData): Promise<void> {
-  const session = await requireUser();
   const id = String(formData.get("id") ?? "");
+  return markNotificationReadById(id);
+}
+
+/** Same as `markNotificationRead` but callable directly with an id —
+ *  used from the notification-row client component which fires the
+ *  read-mark from an onClick handler in parallel with navigation. */
+export async function markNotificationReadById(id: string): Promise<void> {
   if (!id) return;
+  const session = await requireUser();
   await db()
     .update(notifications)
     .set({ readAt: new Date() })
