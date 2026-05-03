@@ -1,7 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
-import { AlertCircle, X, type LucideIcon } from "lucide-react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  useTransition,
+  type ReactNode,
+} from "react";
+import { AlertCircle, X } from "lucide-react";
 
 type ServerAction = (formData: FormData) => Promise<
   | { ok: true; message: string }
@@ -25,7 +31,11 @@ export function ReasonActionButton({
   /** Hidden form fields included on submit — typically `userId` or
    *  `clientId`. */
   hiddenFields,
-  /** What the trigger button looks like in the parent surface. */
+  /** What the trigger button looks like in the parent surface. The
+   *  icon is a ReactNode (NOT a component reference) because lucide
+   *  icons are forwardRef objects and React rejects serializing them
+   *  across the server→client boundary as plain props — pass JSX:
+   *  `icon: <Pause className="h-3 w-3" />`. */
   trigger,
   /** Modal copy. */
   title,
@@ -39,7 +49,7 @@ export function ReasonActionButton({
 }: {
   action: ServerAction;
   hiddenFields: Record<string, string>;
-  trigger: { label: string; icon?: LucideIcon };
+  trigger: { label: string; icon?: ReactNode };
   title: string;
   description: string;
   confirmLabel: string;
@@ -104,7 +114,6 @@ export function ReasonActionButton({
 
   const tooShort = reason.trim().length < 10;
   const tooLong = reason.trim().length > 500;
-  const TriggerIcon = trigger.icon;
 
   const triggerCls =
     tone === "danger"
@@ -118,7 +127,7 @@ export function ReasonActionButton({
         onClick={() => setOpen(true)}
         className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1 text-xs font-medium transition-colors ${triggerCls}`}
       >
-        {TriggerIcon && <TriggerIcon className="h-3 w-3" />}
+        {trigger.icon}
         {trigger.label}
       </button>
 

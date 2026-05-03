@@ -236,7 +236,7 @@ export default async function TeamPage() {
                         <ReasonActionButton
                           action={suspendUser}
                           hiddenFields={{ userId: s.id }}
-                          trigger={{ label: "Suspend", icon: Pause }}
+                          trigger={{ label: "Suspend", icon: <Pause className="h-3 w-3" /> }}
                           tone="danger"
                           title={`Suspend ${s.name ?? s.email ?? "this account"}?`}
                           description="They won't be able to sign in until you restore them. We'll email them with the reason below."
@@ -246,7 +246,7 @@ export default async function TeamPage() {
                       <ReasonActionButton
                         action={deleteUser}
                         hiddenFields={{ userId: s.id }}
-                        trigger={{ label: "Delete", icon: Trash2 }}
+                        trigger={{ label: "Delete", icon: <Trash2 className="h-3 w-3" /> }}
                         tone="danger"
                         title={`Delete ${s.name ?? s.email ?? "this account"}?`}
                         description="The account is closed (soft delete — records remain on file). Password is wiped; sign-in is blocked permanently. We'll email them with the reason below. Hard deletes are SQL-only."

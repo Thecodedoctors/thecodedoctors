@@ -171,7 +171,7 @@ export default async function PatientDetailPage({
             <ReasonActionButton
               action={pauseClient}
               hiddenFields={{ clientId: c.id }}
-              trigger={{ label: "Pause", icon: Pause }}
+              trigger={{ label: "Pause", icon: <Pause className="h-3 w-3" /> }}
               tone="muted"
               title={`Pause care for ${c.name}?`}
               description="New requests are queued, monitoring keeps running, no active treatment until you resume. We'll email the primary contact with the reason below."
@@ -182,7 +182,7 @@ export default async function PatientDetailPage({
             <ReasonActionButton
               action={dischargeClient}
               hiddenFields={{ clientId: c.id }}
-              trigger={{ label: "Discharge", icon: Ban }}
+              trigger={{ label: "Discharge", icon: <Ban className="h-3 w-3" /> }}
               tone="danger"
               title={`Discharge ${c.name}?`}
               description="Closes care for this patient. Records remain on file under the retention policy. We'll email the primary contact with the reason below."
@@ -327,7 +327,7 @@ export default async function PatientDetailPage({
                           <ReasonActionButton
                             action={suspendUser}
                             hiddenFields={{ userId: m.userId }}
-                            trigger={{ label: "Suspend", icon: Pause }}
+                            trigger={{ label: "Suspend", icon: <Pause className="h-3 w-3" /> }}
                             tone="danger"
                             title={`Suspend ${m.name ?? m.email ?? "this user"}?`}
                             description="They won't be able to sign in until you restore them. We'll email them with the reason below."
@@ -337,7 +337,7 @@ export default async function PatientDetailPage({
                         <ReasonActionButton
                           action={deleteUser}
                           hiddenFields={{ userId: m.userId }}
-                          trigger={{ label: "Delete", icon: UserMinus }}
+                          trigger={{ label: "Delete", icon: <UserMinus className="h-3 w-3" /> }}
                           tone="danger"
                           title={`Delete ${m.name ?? m.email ?? "this user"}?`}
                           description="The account is closed (soft delete — records remain). Password is wiped; sign-in is blocked permanently. We'll email them with the reason below."
