@@ -12,7 +12,7 @@ import { cn } from "@/lib/cn";
  * Pricing strategy (locked in 2026-05-03):
  *   - The Checkup       — $599 one-time   (anchor: $899 after launch)
  *   - General Care      — $299/mo or $254/mo billed yearly ($3,049/yr, 15% off)
- *   - Premium Care      — $999/mo or $849/mo billed yearly ($10,189/yr, 15% off)
+ *   - Premium Care      — $899/mo or $764/mo billed yearly ($9,170/yr, 15% off)
  *
  * Anchor framing is "Launch pricing — locked in for early patients" with the
  * future regular price shown crossed out. We do NOT show a fictitious "was"
@@ -33,12 +33,15 @@ const PLANS = {
     monthly: { price: 599, anchor: 899, cadence: "one-time" },
     yearly: { price: 599, anchor: 899, cadence: "one-time" },
     features: [
-      "20+ page diagnostic report",
-      "Performance, SEO, security, accessibility, mobile",
-      "Up to 3 page-level mockups for the highest-priority fixes",
+      "20+ page diagnostic report — yours to keep",
+      "Performance, SEO, security, accessibility, mobile, DNS",
+      "Up to 3 page-level mockups for top-priority fixes",
+      "Competitor benchmark vs 3 sites of your choice",
+      "Privacy + tracker audit (GDPR/CCPA posture)",
+      "30-min strategy call after delivery",
       "Delivered within 48 hours of purchase",
       "Money-back if the report underdelivers",
-      "Credits toward your first 2 months of ongoing care",
+      "$599 credit toward your first 2 months of ongoing care",
     ],
     ctaLabel: "Book the Checkup",
     ctaHref: "/start?plan=checkup",
@@ -56,10 +59,14 @@ const PLANS = {
     },
     features: [
       "Monthly design + content improvements",
-      "Monthly SEO work to grow search traffic",
-      "Industry-standard security hardening",
+      "Monthly SEO work — keywords, schema, search-engine health",
+      "Industry-standard security hardening + WAF",
       "Edits and fixes — whatever your site needs",
+      "Plugin & dependency updates with rollback safety",
+      "Form spam + bot protection",
+      "Image + asset optimization for speed",
       "24/7 uptime monitoring + automatic backups",
+      "Direct messaging with your doctor",
       "Monthly report from your doctor",
     ],
     ctaLabel: "Start General Care",
@@ -70,20 +77,24 @@ const PLANS = {
     name: "Premium Care",
     sub: "Active treatment",
     blurb:
-      "Everything in General Care, with priority response, top-tier security, and proactive monitoring.",
-    monthly: { price: 999, anchor: 1399, cadence: "/ month" },
+      "Everything in General Care, with priority response, top-tier security, and the option to commission custom work.",
+    monthly: { price: 899, anchor: 1399, cadence: "/ month" },
     yearly: {
-      price: monthlyEquivalentYearly(999),
+      price: monthlyEquivalentYearly(899),
       anchor: 1399,
       cadence: "/ month, billed yearly",
     },
     features: [
       "Everything in General Care, plus:",
-      "Same-day priority response, 7 days a week",
-      "Top-tier security hardening + mail authentication",
+      "Same-day priority response, 7 days a week + emergency line",
+      "Top-tier security: WAF tuning, SPF/DKIM/DMARC, header lockdown",
       "Email breach monitoring (HIBP) — alerts within the hour",
       "Live security + uptime telemetry on your dashboard",
       "Quarterly accessibility + security audit",
+      "A/B testing + monthly conversion experiments",
+      "Staging environment + safe deploy workflow",
+      "Quarterly strategy + roadmap session",
+      "Custom builds — mobile apps, integrations, bespoke features (priced separately)",
     ],
     ctaLabel: "Start Premium Care",
     ctaHref: "/start?plan=premium",
