@@ -12,8 +12,10 @@ import { Section } from "@/components/ui/section";
 import {
   listAllClientsForStaff,
   clientCountsByStatus,
+  type ClientListRow,
 } from "@/server/clients";
 import { auth } from "@/auth";
+import type { Session } from "next-auth";
 import { formatRelativeAgo } from "@/lib/time";
 import { cn } from "@/lib/cn";
 
@@ -38,11 +40,20 @@ export default async function PatientsPage({
   const status = params.status ?? "active";
   const sort = params.sort ?? "name";
 
-  const [session, rows, counts] = await Promise.all([
-    auth(),
-    listAllClientsForStaff({ q, status, sort }),
-    clientCountsByStatus(),
-  ]);
+  // TEMP: capture and surface raw errors so we can debug the production 500.
+  // Once we know the cause we'll restore the unconditional Promise.all().
+  let session: Session | null;
+  let rows: ClientListRow[];
+  let counts: Awaited<ReturnType<typeof clientCountsByStatus>>;
+  try {
+    [session, rows, counts] = await Promise.all([
+      auth() as Promise<Session | null>,
+      listAllClientsForStaff({ q, status, sort }),
+      clientCountsByStatus(),
+    ]);
+  } catch (err) {
+    return <DebugError err={err} stage="data fetch" />;
+  }
 
   const isFounder = session?.user?.role === "founder";
 
@@ -349,4 +360,28 @@ function safeHost(url: string): string {
   } catch {
     return url;
   }
+}
+
+/** TEMP debug surface — print real error info inline, bypassing Next.js's
+ *  production sanitization. Server-rendered JSX so message + stack pass
+ *  straight through to the browser. Remove once we've fixed the 500. */
+function DebugError({ err, stage }: { err: unknown; stage: string }) {
+  const e = err as { name?: string; message?: string; stack?: string; cause?: unknown; digest?: string };
+  return (
+    <Section size="md" reveal={false}>
+      <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-signal">
+        Patients · debug
+      </p>
+      <h1 className="mt-2 text-2xl font-semibold tracking-tight">
+        Error during {stage}
+      </h1>
+      <pre className="mt-6 overflow-x-auto whitespace-pre-wrap break-all rounded-2xl border border-signal/30 bg-signal/5 p-5 font-mono text-xs text-foreground">
+        <strong className="text-signal">{e.name ?? "Error"}:</strong>{" "}
+        {e.message ?? String(err)}
+        {e.digest && `\n\ndigest: ${e.digest}`}
+        {e.cause ? `\n\ncause: ${JSON.stringify(e.cause, null, 2)}` : ""}
+        {e.stack && `\n\n${e.stack}`}
+      </pre>
+    </Section>
+  );
 }
