@@ -180,15 +180,24 @@ async function onCheckoutCompleted(s: Stripe.Checkout.Session) {
 }
 
 async function onSubscriptionChange(sub: Stripe.Subscription) {
+  // In Stripe API 2024-09+ (we're on 2026-04-22.dahlia) `current_period_end`
+  // moved OFF the Subscription onto each Subscription Item. We still
+  // fall back to the subscription-level field for older payloads — webhook
+  // retries on legacy data shouldn't crash the handler.
   const subType = sub as unknown as {
     items: {
-      data: Array<{ price: { id: string; unit_amount: number | null } }>;
+      data: Array<{
+        price: { id: string; unit_amount: number | null };
+        current_period_end?: number;
+      }>;
     };
-    current_period_end: number;
+    current_period_end?: number;
     trial_end: number | null;
     cancel_at_period_end: boolean;
   };
   const item = subType.items.data[0];
+  const periodEndUnix =
+    item?.current_period_end ?? subType.current_period_end ?? null;
 
   let clientId = sub.metadata?.clientId;
   if (!clientId) {
@@ -207,20 +216,20 @@ async function onSubscriptionChange(sub: Stripe.Subscription) {
     }
     clientId = existing[0].id;
   }
-  await applySubscriptionUpdate(clientId, sub, item, subType);
+  await applySubscriptionUpdate(clientId, sub, item, periodEndUnix, subType);
 }
 
 async function applySubscriptionUpdate(
   clientId: string,
   sub: Stripe.Subscription,
   item: { price: { id: string; unit_amount: number | null } } | undefined,
+  periodEndUnix: number | null,
   subType: {
-    current_period_end: number;
     trial_end: number | null;
     cancel_at_period_end: boolean;
   }
 ) {
-  const periodEnd = new Date(subType.current_period_end * 1000);
+  const periodEnd = periodEndUnix ? new Date(periodEndUnix * 1000) : null;
   const priceId = item?.price.id ?? null;
   const billedAmount = item?.price.unit_amount ?? 0;
   const isActive = sub.status === "active" || sub.status === "trialing";
