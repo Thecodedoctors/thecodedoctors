@@ -120,8 +120,8 @@ export default function RefundPolicyPage() {
           <p>
             <strong>We don&apos;t prorate refunds for the current month.</strong>{" "}
             If exceptional circumstances apply (extended outage on our side,
-            severe billing error, regulatory requirement in your
-            jurisdiction), email us and we&apos;ll review case-by-case.
+            severe billing error, applicable consumer-protection law),
+            email us and we&apos;ll review case-by-case.
           </p>
 
           <h2>Recurring plans — yearly</h2>

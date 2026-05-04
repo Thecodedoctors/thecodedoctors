@@ -309,26 +309,17 @@ export default function TermsPage() {
             labor disputes, government action, or pandemic.
           </p>
 
-          <h2>15. Governing law and dispute resolution</h2>
+          <h2>15. Dispute resolution</h2>
           <p>
-            These Terms are governed by the laws applicable to the principal
-            place of business of Angel Tech Solutions, without regard to
-            conflict-of-laws rules. Disputes will first be attempted to be
-            resolved by good-faith negotiation. If that fails, exclusive
-            jurisdiction lies with the competent courts of that jurisdiction,
-            unless mandatory consumer-protection law in your jurisdiction
-            provides otherwise.
-          </p>
-          <p>
-            <em>
-              Note: the precise governing-law jurisdiction is being finalized
-              with counsel and will be specified here on launch. Until then,
-              please contact us at{" "}
-              <a href="mailto:hello@thecodedoctors.com">
-                hello@thecodedoctors.com
-              </a>{" "}
-              with any dispute and we&apos;ll work to resolve it informally.
-            </em>
+            We aim to resolve every dispute by good-faith conversation first.
+            Email{" "}
+            <a href="mailto:hello@thecodedoctors.com">
+              hello@thecodedoctors.com
+            </a>{" "}
+            with the issue and we&apos;ll respond within five business days.
+            Most things get sorted out from there. Nothing in these Terms
+            limits any rights you have under mandatory consumer-protection
+            law where you live.
           </p>
 
           <h2>16. Changes to these Terms</h2>

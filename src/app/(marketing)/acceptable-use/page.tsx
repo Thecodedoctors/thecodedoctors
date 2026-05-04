@@ -49,10 +49,10 @@ export default function AcceptableUsePage() {
           </p>
           <ul>
             <li>
-              <strong>Illegal activity</strong> in the operator&apos;s or
-              users&apos; jurisdiction — including unlicensed gambling, drug
-              sales, weapon sales prohibited by applicable law, or services
-              that exist primarily to enable a crime.
+              <strong>Illegal activity</strong> under applicable law —
+              including unlicensed gambling, drug sales, weapon sales
+              prohibited by law, or services that exist primarily to enable
+              a crime.
             </li>
             <li>
               <strong>Adult content</strong> without robust age-gating, or any
@@ -139,8 +139,8 @@ export default function AcceptableUsePage() {
           </p>
           <p>
             Copyright takedown notices (DMCA-style) should include all
-            information required by your jurisdiction&apos;s notice-and-action
-            process. Send to{" "}
+            information required by applicable copyright law&apos;s
+            notice-and-action process. Send to{" "}
             <a href="mailto:hello@thecodedoctors.com">
               hello@thecodedoctors.com
             </a>{" "}
