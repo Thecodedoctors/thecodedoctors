@@ -26,6 +26,7 @@ import type {
 } from "@/lib/checkup/types";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
+import { TurnstileGate } from "@/components/turnstile-gate";
 
 const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   transport: Globe,
@@ -259,15 +260,25 @@ type LeadResponse =
 function EmailGate({ report }: { report: CheckupReport }) {
   const [email, setEmail] = useState("");
   const [pending, setPending] = useState(false);
+  const [tsToken, setTsToken] = useState("");
   const [result, setResult] = useState<
     | { kind: "done"; emailDelivered: boolean; emailError?: string }
     | null
   >(null);
   const [error, setError] = useState<string | null>(null);
 
+  const captchaConfigured = Boolean(
+    process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY
+  );
+  const captchaReady = !captchaConfigured || Boolean(tsToken);
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!email.trim() || pending) return;
+    if (!captchaReady) {
+      setError("Please complete the captcha and try again.");
+      return;
+    }
     setPending(true);
     setError(null);
     try {
@@ -279,6 +290,7 @@ function EmailGate({ report }: { report: CheckupReport }) {
           url: report.finalUrl,
           source: "checkup",
           report,
+          turnstileToken: tsToken,
         }),
       });
       const data = (await res.json()) as LeadResponse;
@@ -414,6 +426,9 @@ function EmailGate({ report }: { report: CheckupReport }) {
                 {pending ? "Sending…" : "Send report"}
                 {!pending && <ArrowRight className="h-4 w-4" />}
               </Button>
+            </div>
+            <div className="mt-3 px-1">
+              <TurnstileGate onToken={setTsToken} />
             </div>
           </div>
           {error && (

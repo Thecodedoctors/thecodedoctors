@@ -6,6 +6,7 @@ import { Activity, ArrowRight, Lock, AlertCircle } from "lucide-react";
 import type { CheckupReport } from "@/lib/checkup/types";
 import { Button } from "@/components/ui/button";
 import { DiagnosticResults } from "@/components/diagnostic-results";
+import { TurnstileGate } from "@/components/turnstile-gate";
 
 type State =
   | { kind: "idle" }
@@ -16,7 +17,14 @@ type State =
 export function DiagnosticTool() {
   const [state, setState] = useState<State>({ kind: "idle" });
   const [url, setUrl] = useState("");
+  const [tsToken, setTsToken] = useState<string>("");
   const [pending, startTransition] = useTransition();
+
+  // Site key absent (dev) → captcha is non-blocking; pretend we have a token.
+  const captchaConfigured = Boolean(
+    process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY
+  );
+  const captchaReady = !captchaConfigured || Boolean(tsToken);
 
   function reset() {
     setState({ kind: "idle" });
@@ -26,6 +34,13 @@ export function DiagnosticTool() {
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!url.trim()) return;
+    if (!captchaReady) {
+      setState({
+        kind: "error",
+        message: "Please complete the captcha and try again.",
+      });
+      return;
+    }
     setState({ kind: "scanning", url: url.trim() });
 
     startTransition(async () => {
@@ -33,7 +48,10 @@ export function DiagnosticTool() {
         const res = await fetch("/api/checkup", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: url.trim() }),
+          body: JSON.stringify({
+            url: url.trim(),
+            turnstileToken: tsToken,
+          }),
         });
         const data = (await res.json()) as
           | CheckupReport
@@ -80,6 +98,7 @@ export function DiagnosticTool() {
               setUrl={setUrl}
               onSubmit={handleSubmit}
               pending={pending}
+              onTurnstileToken={setTsToken}
             />
           </motion.div>
         )}
@@ -128,11 +147,13 @@ function UrlForm({
   setUrl,
   onSubmit,
   pending,
+  onTurnstileToken,
 }: {
   url: string;
   setUrl: (s: string) => void;
   onSubmit: (e: FormEvent<HTMLFormElement>) => void;
   pending: boolean;
+  onTurnstileToken: (t: string) => void;
 }) {
   return (
     <form
@@ -166,6 +187,9 @@ function UrlForm({
           {pending ? "Running…" : "Run Checkup"}
           {!pending && <ArrowRight className="h-4 w-4" />}
         </Button>
+      </div>
+      <div className="mt-3 px-2">
+        <TurnstileGate onToken={onTurnstileToken} />
       </div>
       <p className="mt-3 inline-flex items-center gap-2 px-2 py-1 text-xs text-muted">
         <Lock className="h-3.5 w-3.5 text-accent" />

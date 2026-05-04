@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
-import Script from "next/script";
+import { useState, type FormEvent } from "react";
 import {
   ArrowRight,
   User,
@@ -14,35 +13,13 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { TurnstileGate } from "@/components/turnstile-gate";
 
 /**
  * Inquiry form on /book. Submits to /api/contact, which persists the
- * lead, emails the practice, and rate-limits by IP.
- *
- * Cloudflare Turnstile renders a managed challenge widget below the
- * form fields; the token it produces is passed to the server, which
- * verifies against challenges.cloudflare.com. The widget loads via
- * `next/script` so it doesn't block paint.
+ * lead, emails the practice, and rate-limits by IP. Captcha gating is
+ * delegated to the shared TurnstileGate component.
  */
-
-declare global {
-  interface Window {
-    turnstile?: {
-      render: (
-        el: HTMLElement,
-        options: {
-          sitekey: string;
-          callback?: (token: string) => void;
-          "error-callback"?: () => void;
-          "expired-callback"?: () => void;
-          theme?: "light" | "dark" | "auto";
-        }
-      ) => string;
-      reset: (widgetId?: string) => void;
-      remove: (widgetId?: string) => void;
-    };
-  }
-}
 
 type FormState =
   | { kind: "idle" }
@@ -51,38 +28,11 @@ type FormState =
   | { kind: "error"; message: string };
 
 export function ContactForm() {
-  const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "";
-  const widgetRef = useRef<HTMLDivElement | null>(null);
-  const widgetIdRef = useRef<string | null>(null);
+  const captchaConfigured = Boolean(
+    process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY
+  );
   const [tsToken, setTsToken] = useState<string>("");
   const [state, setState] = useState<FormState>({ kind: "idle" });
-
-  // Render the Turnstile widget once the script + the host element are
-  // both ready. Watching tsScriptReady + the ref lets us do this idempotently
-  // without re-rendering on every keystroke.
-  const [tsScriptReady, setTsScriptReady] = useState(false);
-  useEffect(() => {
-    if (!tsScriptReady) return;
-    if (!siteKey) return;
-    if (!widgetRef.current) return;
-    if (widgetIdRef.current) return; // already rendered
-    if (!window.turnstile) return;
-
-    widgetIdRef.current = window.turnstile.render(widgetRef.current, {
-      sitekey: siteKey,
-      callback: (token) => setTsToken(token),
-      "expired-callback": () => setTsToken(""),
-      "error-callback": () => setTsToken(""),
-      theme: "dark",
-    });
-
-    return () => {
-      if (widgetIdRef.current && window.turnstile) {
-        window.turnstile.remove(widgetIdRef.current);
-        widgetIdRef.current = null;
-      }
-    };
-  }, [tsScriptReady, siteKey]);
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -103,7 +53,7 @@ export function ContactForm() {
 
     // Client-side guard so the user gets feedback BEFORE waiting on the
     // server round-trip when the captcha hasn't been completed.
-    if (siteKey && !tsToken) {
+    if (captchaConfigured && !tsToken) {
       setState({
         kind: "error",
         message: "Please complete the captcha below before submitting.",
@@ -139,13 +89,8 @@ export function ContactForm() {
         kind: "success",
         message: body.message ?? "Message sent.",
       });
-      // Reset the widget so the user can submit again later if they
-      // need to (rare for a contact form, but cheap to do right).
-      if (widgetIdRef.current && window.turnstile) {
-        window.turnstile.reset(widgetIdRef.current);
-        setTsToken("");
-      }
       e.currentTarget.reset();
+      setTsToken("");
       return;
     }
 
@@ -155,14 +100,7 @@ export function ContactForm() {
         body.message ??
         "Something went wrong. Please try again in a moment.",
     });
-    // Reset the widget if the server rejected the captcha so the user
-    // gets a fresh challenge instead of a stuck one.
-    if (
-      widgetIdRef.current &&
-      window.turnstile &&
-      body.error === "captcha-failed"
-    ) {
-      window.turnstile.reset(widgetIdRef.current);
+    if (body.error === "captcha-failed") {
       setTsToken("");
     }
   }
@@ -187,15 +125,6 @@ export function ContactForm() {
 
   return (
     <>
-      {siteKey && (
-        <Script
-          src="https://challenges.cloudflare.com/turnstile/v0/api.js"
-          strategy="lazyOnload"
-          onReady={() => setTsScriptReady(true)}
-          onLoad={() => setTsScriptReady(true)}
-        />
-      )}
-
       <form
         onSubmit={onSubmit}
         className="grid gap-4 rounded-2xl border border-border-strong bg-surface/40 p-6 md:p-8"
@@ -302,18 +231,8 @@ export function ContactForm() {
           />
         </Field>
 
-        {/* Turnstile widget. Cloudflare manages the challenge UI; we
-            just give it a host element. If TURNSTILE_SITE_KEY isn't
-            configured (dev) we render a placeholder so users still see
-            the form has a captcha gate. */}
-        <div className="mt-2 flex flex-col gap-2">
-          {siteKey ? (
-            <div ref={widgetRef} className="cf-turnstile-host" />
-          ) : (
-            <p className="rounded-xl border border-dashed border-border-strong bg-background/40 px-4 py-3 font-mono text-[11px] text-muted">
-              [captcha disabled — TURNSTILE_SITE_KEY not configured]
-            </p>
-          )}
+        <div className="mt-2">
+          <TurnstileGate onToken={setTsToken} />
         </div>
 
         {state.kind === "error" && (
