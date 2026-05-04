@@ -10,18 +10,25 @@ const isDev = process.env.NODE_ENV === "development";
 // HTML submission. The proper long-term fix is nonce-based CSP via proxy.ts
 // (deferred to Phase 7 polish), which keeps a strict posture while supporting
 // hydration of static-rendered pages.
+//
+// Cloudflare Turnstile is allowlisted on script-src, frame-src, and connect-src:
+// the widget loads `challenges.cloudflare.com/turnstile/v0/api.js`, embeds an
+// iframe from that origin to render the challenge UI, and posts the resolved
+// token back via a POST to the same origin. Without all three, the widget
+// silently fails to render and the form never gets a captcha token to submit.
+const TURNSTILE_ORIGIN = "https://challenges.cloudflare.com";
 const csp = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
+  `script-src 'self' 'unsafe-inline' ${TURNSTILE_ORIGIN}${isDev ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' blob: data:",
   "font-src 'self' data:",
-  "connect-src 'self'",
+  `connect-src 'self' ${TURNSTILE_ORIGIN}`,
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",
   "frame-ancestors 'none'",
-  "frame-src 'none'",
+  `frame-src ${TURNSTILE_ORIGIN}`,
   "manifest-src 'self'",
   "media-src 'self'",
   "worker-src 'self' blob:",
