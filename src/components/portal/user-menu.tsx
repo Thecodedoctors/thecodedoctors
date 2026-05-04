@@ -91,17 +91,14 @@ export function UserMenu({
           </div>
           <ul className="py-2 text-sm">
             <li>
-              <span
+              <a
+                href="/settings"
                 role="menuitem"
-                aria-disabled="true"
-                className="flex items-center gap-3 px-4 py-2 text-muted/60 cursor-default"
+                className="flex items-center gap-3 px-4 py-2 text-muted hover:text-foreground hover:bg-surface"
               >
                 <Settings className="h-4 w-4" />
                 Settings
-                <span className="ml-auto rounded-full bg-muted/10 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em] text-muted">
-                  soon
-                </span>
-              </span>
+              </a>
             </li>
             <li>
               <a
