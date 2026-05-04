@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Sparkles, Clock, AlertCircle, ArrowRight } from "lucide-react";
+import { endTrialNowForCurrentUser } from "@/server/billing";
 
 /**
  * Trial countdown shown on the patient hub. Pure component — the page
@@ -7,6 +8,11 @@ import { Sparkles, Clock, AlertCircle, ArrowRight } from "lucide-react";
  * (keeps Date.now() out of render for react-hooks/purity).
  *
  * Renders nothing when state is "none" (no trial set).
+ *
+ * The active/expiring CTAs submit a server action that ends the trial
+ * immediately on Stripe and charges the card on file. The expired CTA
+ * routes to /billing where the patient can pick a new plan (since the
+ * old subscription has typically been cancelled by then).
  */
 export type TrialState = "none" | "active" | "expiring" | "expired";
 
@@ -35,9 +41,7 @@ export function TrialBanner({
 }) {
   if (state === "none") return null;
 
-  const targetPlan = plan === "premium" ? "premium" : "general";
-  const convertHref = `/start?plan=${targetPlan}`;
-  const planLabel = targetPlan === "premium" ? "Premium Care" : "General Care";
+  const planLabel = plan === "premium" ? "Premium Care" : "General Care";
 
   if (state === "expired") {
     return (
@@ -58,10 +62,10 @@ export function TrialBanner({
             </div>
           </div>
           <Link
-            href={convertHref}
+            href="/billing"
             className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-foreground px-4 py-2 text-xs font-medium text-background transition-colors hover:bg-[#e6e9ee]"
           >
-            Continue with {planLabel}
+            Pick a plan
             <ArrowRight className="h-3 w-3" />
           </Link>
         </div>
@@ -87,13 +91,15 @@ export function TrialBanner({
               </p>
             </div>
           </div>
-          <Link
-            href={convertHref}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-foreground px-4 py-2 text-xs font-medium text-background transition-colors hover:bg-[#e6e9ee]"
-          >
-            Convert to {planLabel}
-            <ArrowRight className="h-3 w-3" />
-          </Link>
+          <form action={endTrialNowForCurrentUser}>
+            <button
+              type="submit"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-foreground px-4 py-2 text-xs font-medium text-background transition-colors hover:bg-[#e6e9ee]"
+            >
+              Convert to {planLabel}
+              <ArrowRight className="h-3 w-3" />
+            </button>
+          </form>
         </div>
       </section>
     );
@@ -116,13 +122,15 @@ export function TrialBanner({
             </p>
           </div>
         </div>
-        <Link
-          href={convertHref}
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border-strong px-4 py-2 text-xs font-medium text-foreground transition-colors hover:border-accent hover:text-accent"
-        >
-          Convert early
-          <ArrowRight className="h-3 w-3" />
-        </Link>
+        <form action={endTrialNowForCurrentUser}>
+          <button
+            type="submit"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border-strong px-4 py-2 text-xs font-medium text-foreground transition-colors hover:border-accent hover:text-accent"
+          >
+            Convert early
+            <ArrowRight className="h-3 w-3" />
+          </button>
+        </form>
       </div>
     </section>
   );

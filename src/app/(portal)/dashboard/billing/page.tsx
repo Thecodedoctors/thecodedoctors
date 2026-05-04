@@ -35,6 +35,7 @@ type SearchParams = Promise<{
   portal?: string;
   upgrade?: string;
   card?: string;
+  trial?: string;
 }>;
 
 const PLAN_RANK: Record<string, number> = {
@@ -164,7 +165,13 @@ export default async function BillingPage({
 function Banners({
   params,
 }: {
-  params: { checkout?: string; portal?: string; upgrade?: string; card?: string };
+  params: {
+    checkout?: string;
+    portal?: string;
+    upgrade?: string;
+    card?: string;
+    trial?: string;
+  };
 }) {
   return (
     <>
@@ -208,6 +215,34 @@ function Banners({
           tone="warning"
           title="We couldn't switch your plan"
           body="Stripe rejected the change. Your existing plan is unaffected. Email hello@thecodedoctors.com and we'll sort it out."
+        />
+      )}
+      {params.trial === "converted" && (
+        <Banner
+          tone="success"
+          title="You're a paying patient now"
+          body="Trial ended early — Stripe charged your card on file for the first billing period. Welcome to ongoing care."
+        />
+      )}
+      {params.trial === "no-subscription" && (
+        <Banner
+          tone="muted"
+          title="No subscription on file"
+          body="Pick a plan first to start care."
+        />
+      )}
+      {params.trial === "already-ended" && (
+        <Banner
+          tone="muted"
+          title="Trial already ended"
+          body="Looks like billing has already started — refresh to see your subscription state."
+        />
+      )}
+      {params.trial === "failed" && (
+        <Banner
+          tone="warning"
+          title="We couldn't end your trial early"
+          body="Stripe rejected the change. Your trial keeps running. Email hello@thecodedoctors.com and we'll sort it out."
         />
       )}
       {params.upgrade === "no-subscription" && (

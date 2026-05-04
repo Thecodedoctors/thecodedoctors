@@ -293,6 +293,67 @@ export async function upgradeSubscriptionForCurrentUser(
 }
 
 /**
+ * Form action — converts an active trial into a paid subscription
+ * immediately. Stripe ends the trial and charges the card on file for
+ * the first billing period. The webhook follows up with the new
+ * status / mrrCents / currentPeriodEnd.
+ *
+ * Idempotent: if the trial already ended (or no subscription exists),
+ * redirects with a banner instead of throwing.
+ */
+export async function endTrialNowForCurrentUser(): Promise<void> {
+  const session = await requireUser();
+  const stripe = getStripe();
+  if (!stripe) throw new Error("Stripe is not configured.");
+
+  const client = await getOrCreateClientForUser(session.user.id, {
+    name: session.user.name,
+    email: session.user.email,
+  });
+
+  if (!client.stripeSubscriptionId) {
+    redirect(portalActionRedirect("/dashboard/billing?trial=no-subscription"));
+  }
+  if (
+    !client.trialEndsAt ||
+    new Date(client.trialEndsAt).getTime() <= Date.now()
+  ) {
+    redirect(portalActionRedirect("/dashboard/billing?trial=already-ended"));
+  }
+
+  try {
+    await stripe.subscriptions.update(client.stripeSubscriptionId, {
+      // Setting trial_end to "now" tells Stripe to end the trial
+      // immediately, kick off a fresh billing cycle, and charge the
+      // card on file. proration_behavior is irrelevant here — there's
+      // no prior paid period to prorate against.
+      trial_end: "now",
+    });
+  } catch (err) {
+    console.error(
+      "[billing.endTrialNow] Stripe subscriptions.update failed",
+      { subId: client.stripeSubscriptionId },
+      err
+    );
+    redirect(portalActionRedirect("/dashboard/billing?trial=failed"));
+  }
+
+  await recordAudit({
+    actorUserId: session.user.id,
+    action: "billing.trial_converted",
+    targetType: "client",
+    targetId: client.id,
+  });
+
+  // Webhook (`customer.subscription.updated`) is the source of truth
+  // for client.trialEndsAt / status / mrrCents — revalidate so the page
+  // re-fetches once it lands.
+  revalidatePath("/dashboard/billing");
+  revalidatePath("/dashboard");
+  redirect(portalActionRedirect("/dashboard/billing?trial=converted"));
+}
+
+/**
  * Form action — opens the Stripe Customer Portal. Kept as a fallback
  * for things we don't surface on-site (cancel, invoices, tax IDs, etc).
  */
