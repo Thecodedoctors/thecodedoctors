@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Section } from "@/components/ui/section";
-import { LegalReviewBanner } from "@/components/legal-review-banner";
 
 export const metadata: Metadata = {
   openGraph: {
@@ -28,9 +27,7 @@ export default function RefundPolicyPage() {
         <h1 className="mt-3 text-4xl font-semibold tracking-tight md:text-5xl">
           Refund Policy
         </h1>
-        <p className="mt-3 text-sm text-muted">Last updated: 2026-05-03</p>
-
-        <LegalReviewBanner />
+        <p className="mt-3 text-sm text-muted">Last updated: 2026-05-04</p>
 
         <div
           className="mt-10 space-y-6 text-muted leading-relaxed
