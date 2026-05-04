@@ -1,6 +1,5 @@
 "use server";
 
-import type Stripe from "stripe";
 import { db, clients } from "@/db";
 import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
@@ -17,7 +16,6 @@ import {
 import { site } from "@/lib/site";
 import { recordAudit } from "@/server/audit";
 import { portalActionRedirect } from "@/lib/portal-redirect";
-import { ensureCheckupCredit } from "@/lib/checkup-credit";
 
 /**
  * Patient-side billing helpers.
@@ -146,65 +144,40 @@ export async function startCheckoutForCurrentUser(
       .where(eq(clients.id, client.id));
   }
 
-  // Checkup → Care credit: if this client originally bought the $599
-  // Checkup and is now upgrading to a recurring plan, attach a Stripe
-  // coupon to the Checkout session so Stripe surfaces the discount in
-  // its UI ("you'll be charged $0 today") and applies it to the
-  // first invoice(s).
+  // Checkup → Care: if this client originally bought the $599 Checkup
+  // and is now subscribing to recurring care, give them 60 days free
+  // on the new subscription. The Checkup payment effectively covers
+  // their first 2 months of ongoing care.
   //
-  // We use a coupon (not customer.balance) because Stripe Checkout
-  // displays coupon discounts in the "due today" line but does NOT
-  // surface customer.balance — leading to confused customers who see
-  // "$299 due today," enter a card expecting that charge, then get
-  // charged $0 because the balance silently absorbed the invoice.
+  // Trial-based instead of coupon-based because Stripe Checkout shows
+  // "$0 due today, then $299/mo from {date}" cleanly in its UI — no
+  // confused "$299 due" / "$0 charged" gap. Stripe also does the work
+  // of scheduling the first billing date for us.
   //
-  // Coupon shape per plan to honor the marketing promise ("$599 credit
-  // toward your first 2 months"):
-  //   - General Care ($299/mo): $299 off × 2 months = $598 covered.
-  //     Patient pays $0 month 1 + $0 month 2 + $299/mo from month 3.
-  //   - Premium Care ($899/mo): $599 off once. Patient pays $300 month
-  //     1 + $899/mo from month 2.
-  //
-  // Idempotency: customer.metadata.checkup_credit_coupon_id stores the
-  // coupon ID once created. On retry checkout we reuse it (max_redemptions
-  // is 1, so reuse is safe — a redeemed coupon won't apply again).
-  let appliedCouponId: string | undefined;
-  if (client.plan === "checkup" && customerId) {
-    try {
-      appliedCouponId = await ensureCheckupCredit({
-        stripe,
-        customerId,
-        plan,
-      });
-    } catch (err) {
-      console.error(
-        "[billing.startCheckout] checkup credit coupon failed (non-fatal — proceeding without)",
-        err
-      );
-    }
-  }
+  // For Premium ($899/mo), 60 days = ~$1798 of value vs the $599
+  // they paid — generous, but a deliberate choice: the 2-month free
+  // window is a nurture period that converts higher-tier intent at
+  // launch. Re-evaluate after we have data.
+  const isCheckupConversion = client.plan === "checkup";
 
   const checkoutSession = await stripe.checkout.sessions.create({
     mode: "subscription",
     customer: customerId,
     line_items: [{ price: priceId, quantity: 1 }],
-    ...(appliedCouponId && {
-      discounts: [{ coupon: appliedCouponId }],
-    }),
     success_url: `${site.url}/dashboard/billing?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${site.url}/dashboard/billing?checkout=canceled`,
-    // allow_promotion_codes can't coexist with `discounts` — Stripe's
-    // API rejects the combination. Drop the user-entered promo code
-    // box when we're auto-applying a checkup-credit coupon, otherwise
-    // leave it on so other promo codes still work.
-    ...(appliedCouponId
-      ? {}
-      : { allow_promotion_codes: true }),
+    allow_promotion_codes: true,
     billing_address_collection: "auto",
     subscription_data: {
       metadata: { clientId: client.id, plan, interval },
+      ...(isCheckupConversion && { trial_period_days: 60 }),
     },
-    metadata: { clientId: client.id, plan, interval },
+    metadata: {
+      clientId: client.id,
+      plan,
+      interval,
+      checkup_conversion: isCheckupConversion ? "true" : "false",
+    },
   });
 
   await recordAudit({
