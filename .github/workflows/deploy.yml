@@ -48,6 +48,7 @@ jobs:
         run: npm run cf:build
         env:
           NEXT_PUBLIC_SITE_URL: https://thecodedoctors.com
+          NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${{ secrets.NEXT_PUBLIC_TURNSTILE_SITE_KEY }}
 
       - name: Deploy to Cloudflare
         run: npx wrangler deploy
