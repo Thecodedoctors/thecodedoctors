@@ -212,23 +212,42 @@ export async function finalizePendingSignupBySessionId(
   });
 
   // Send the verification email so the patient can confirm ownership
-  // post-payment. We deliberately DO NOT await — Resend can take 1–3s
-  // and we don't want finalize blocking on it (which would in turn
-  // delay the /welcome → /dashboard auto-signin redirect, making the
-  // post-purchase landing feel sluggish). The token is stored in the
-  // user row before the email send is attempted, so even if the
-  // worker kills the promise mid-flight the patient can resend from
-  // the dashboard banner.
-  void import("@/server/email-verification")
-    .then(({ sendVerificationCodeForUserId }) =>
-      sendVerificationCodeForUserId(userId)
-    )
-    .catch((err) => {
+  // post-payment. Two reasons this is delicate on Cloudflare Workers:
+  //   1. Resend's API can take 1-3s — too long to block /welcome's
+  //      response on, since the user is staring at a blank page.
+  //   2. Plain fire-and-forget (`void promise.catch(...)`) gets the
+  //      in-flight fetch killed when the worker response is sent.
+  //      Token is in DB but the email never reaches Resend.
+  // The right primitive is `ctx.waitUntil(promise)` — keeps the
+  // promise alive past the response. Fallback to awaiting if context
+  // isn't available (e.g. running in `next dev`).
+  const sendPromise = (async () => {
+    try {
+      const { sendVerificationCodeForUserId } = await import(
+        "@/server/email-verification"
+      );
+      await sendVerificationCodeForUserId(userId);
+    } catch (err) {
       console.error(
         "[finalize] verification email send failed (non-fatal)",
         err
       );
-    });
+    }
+  })();
+  try {
+    const { getCloudflareContext } = await import(
+      "@opennextjs/cloudflare"
+    );
+    const cfCtx = getCloudflareContext();
+    if (cfCtx?.ctx?.waitUntil) {
+      cfCtx.ctx.waitUntil(sendPromise);
+    } else {
+      await sendPromise;
+    }
+  } catch {
+    // Cloudflare context not available (dev / preview) — just await.
+    await sendPromise;
+  }
 
   return {
     ok: true,
