@@ -241,15 +241,19 @@ export async function upgradeSubscriptionForCurrentUser(
   // (price archived on the wrong account, currency mismatch, customer
   // delinquent, expired card). Catch those explicitly so the user sees
   // a banner instead of the global Critical error page.
+  //
+  // proration_behavior: "always_invoice" issues an immediate invoice
+  // for the prorated upgrade amount instead of deferring it to the next
+  // billing cycle. Without this the customer "upgrades" but isn't
+  // charged until next month — which looks like a free upgrade and
+  // creates support work down the road.
   let updatedId: string;
   try {
     const updated = await stripe.subscriptions.update(
       client.stripeSubscriptionId,
       {
         items: [{ id: currentItemId, price: newPriceId }],
-        // Charge the prorated difference on the next invoice line cycle
-        // so the customer pays the delta, not a full second month.
-        proration_behavior: "create_prorations",
+        proration_behavior: "always_invoice",
         metadata: { clientId: client.id, plan, interval },
       }
     );
@@ -324,6 +328,70 @@ export type SavedCard = {
   expYear: number;
   isDefault: boolean;
 };
+
+export type ClientInvoice = {
+  id: string;
+  /** Human-friendly Stripe invoice number (e.g. "ABC-0001"). Falls back
+   *  to the invoice id for drafts that haven't been numbered yet. */
+  number: string;
+  /** When the invoice was issued. */
+  date: Date;
+  /** Cents in the currency below. */
+  amount: number;
+  currency: string;
+  /** Stripe invoice status. We only surface paid / open / void / uncollectible
+   *  in the UI; draft + deleted are filtered out by the list call. */
+  status: "paid" | "open" | "void" | "uncollectible" | "draft";
+  /** Human description of what the invoice covers (line item descriptions
+   *  joined). Empty string when Stripe doesn't return any. */
+  summary: string;
+  /** Direct PDF download URL hosted by Stripe. Public, single-use-ish. */
+  pdfUrl: string | null;
+  /** Stripe-hosted invoice viewer URL (paid receipts open here). */
+  hostedUrl: string | null;
+};
+
+/**
+ * List the customer's recent invoices for in-app rendering. Returns at
+ * most the last 24 invoices, newest first. Empty array if the customer
+ * has no invoices yet (first month not billed, or Stripe not yet linked).
+ */
+export async function listInvoicesForCurrentUser(): Promise<ClientInvoice[]> {
+  const session = await requireUser();
+  const stripe = getStripe();
+  if (!stripe) return [];
+
+  const client = await getOrCreateClientForUser(session.user.id, {
+    name: session.user.name,
+    email: session.user.email,
+  });
+  if (!client.stripeCustomerId) return [];
+
+  const invoices = await stripe.invoices.list({
+    customer: client.stripeCustomerId,
+    limit: 24,
+    // Don't surface draft invoices — they're transient and confusing.
+    status: undefined,
+  });
+
+  return invoices.data
+    .filter((inv) => inv.status !== "draft")
+    .map((inv) => ({
+      id: inv.id ?? "",
+      number: inv.number ?? inv.id ?? "",
+      date: new Date((inv.created ?? Math.floor(Date.now() / 1000)) * 1000),
+      amount: inv.amount_paid > 0 ? inv.amount_paid : inv.amount_due,
+      currency: inv.currency ?? "usd",
+      status: (inv.status ?? "open") as ClientInvoice["status"],
+      summary:
+        inv.lines?.data
+          ?.map((l) => l.description)
+          .filter((d): d is string => Boolean(d))
+          .join(" · ") ?? "",
+      pdfUrl: inv.invoice_pdf ?? null,
+      hostedUrl: inv.hosted_invoice_url ?? null,
+    }));
+}
 
 /** List the customer's saved cards along with which one is default. */
 export async function listPaymentMethodsForCurrentUser(): Promise<SavedCard[]> {

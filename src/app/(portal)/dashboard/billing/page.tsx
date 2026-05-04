@@ -5,22 +5,23 @@ import {
   AlertCircle,
   ArrowRight,
   Sparkles,
-  Settings,
   Plus,
   Star,
+  Download,
+  FileText,
 } from "lucide-react";
 import { Section } from "@/components/ui/section";
 import {
   getBillingStateForCurrentUser,
   startCheckoutForCurrentUser,
   upgradeSubscriptionForCurrentUser,
-  openCustomerPortalForCurrentUser,
   listPaymentMethodsForCurrentUser,
+  listInvoicesForCurrentUser,
   startAddCardCheckoutForCurrentUser,
   setDefaultPaymentMethodForCurrentUser,
   type SavedCard,
+  type ClientInvoice,
 } from "@/server/billing";
-import { Button } from "@/components/ui/button";
 import { formatRelativeAgo } from "@/lib/time";
 import { cn } from "@/lib/cn";
 
@@ -113,9 +114,10 @@ export default async function BillingPage({
 }: {
   searchParams: SearchParams;
 }) {
-  const [state, cards] = await Promise.all([
+  const [state, cards, invoices] = await Promise.all([
     getBillingStateForCurrentUser(),
     listPaymentMethodsForCurrentUser(),
+    listInvoicesForCurrentUser(),
   ]);
   const params = await searchParams;
 
@@ -145,6 +147,9 @@ export default async function BillingPage({
         )}
 
         {state.configured && <PaymentMethodsSection cards={cards} />}
+        {state.configured && state.hasSubscription && (
+          <InvoicesSection invoices={invoices} />
+        )}
       </div>
     </Section>
   );
@@ -186,7 +191,7 @@ function Banners({
         <Banner
           tone="success"
           title="Plan switched"
-          body="Stripe will charge the prorated difference on your next invoice. Welcome to the new tier."
+          body="The prorated upgrade amount was charged to your card on file. Welcome to the new tier."
         />
       )}
       {params.upgrade === "not-higher" && (
@@ -356,24 +361,16 @@ function ActiveSubscriptionCard({
         </div>
       </dl>
 
-      <div className="mt-6 flex flex-wrap items-center gap-3">
-        <form action={openCustomerPortalForCurrentUser}>
-          <Button type="submit" variant="secondary" size="sm">
-            <Settings className="h-3.5 w-3.5" />
-            View invoices
-          </Button>
-        </form>
-        <p className="text-xs text-muted">
-          Want to cancel?{" "}
-          <a
-            href="mailto:hello@thecodedoctors.com?subject=Cancel%20my%20plan"
-            className="text-foreground underline decoration-border-strong underline-offset-4 hover:decoration-accent"
-          >
-            Email us
-          </a>{" "}
-          and we&apos;ll take care of it.
-        </p>
-      </div>
+      <p className="mt-6 text-xs text-muted">
+        Want to cancel?{" "}
+        <a
+          href="mailto:hello@thecodedoctors.com?subject=Cancel%20my%20plan"
+          className="text-foreground underline decoration-border-strong underline-offset-4 hover:decoration-accent"
+        >
+          Email us
+        </a>{" "}
+        and we&apos;ll take care of it. Past invoices are listed below.
+      </p>
     </section>
   );
 }
@@ -549,7 +546,7 @@ function UpgradePlanCard({
         )}
 
         <span className="font-mono text-xs text-accent">
-          Stripe will prorate — you won&apos;t pay a full second month.
+          Charged immediately, prorated for the time remaining on your current plan.
         </span>
       </button>
     </form>
@@ -780,4 +777,124 @@ function brandLabel(brand: string): string {
     unionpay: "UnionPay",
   };
   return map[brand] ?? brand[0]?.toUpperCase() + brand.slice(1);
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Invoices — rendered in-app instead of redirecting to Stripe Customer Portal.
+   PDF downloads still come from Stripe's CDN (they generate the PDFs);
+   everything else lives in our UI.
+   ──────────────────────────────────────────────────────────────────────── */
+
+function InvoicesSection({ invoices }: { invoices: ClientInvoice[] }) {
+  return (
+    <section className="mt-12">
+      <h2 className="mb-3 font-mono text-xs uppercase tracking-[0.18em] text-muted">
+        Invoices
+      </h2>
+      {invoices.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-border-strong bg-surface/30 p-8 text-center">
+          <span className="mx-auto grid h-10 w-10 place-items-center rounded-full bg-surface text-muted ring-1 ring-inset ring-border">
+            <FileText className="h-4 w-4" />
+          </span>
+          <p className="mt-4 text-sm text-foreground">No invoices yet.</p>
+          <p className="mt-1 text-xs text-muted">
+            Your first invoice will land here after the next billing cycle.
+          </p>
+        </div>
+      ) : (
+        <ul className="divide-y divide-border/60 overflow-hidden rounded-2xl border border-border bg-surface/40">
+          {invoices.map((inv) => (
+            <li
+              key={inv.id}
+              className="flex flex-wrap items-center gap-4 px-5 py-4"
+            >
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-surface text-muted ring-1 ring-inset ring-border">
+                <FileText className="h-4 w-4" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="flex flex-wrap items-baseline gap-2">
+                  <span className="font-mono text-sm font-medium text-foreground">
+                    {inv.number}
+                  </span>
+                  <InvoiceStatusBadge status={inv.status} />
+                </p>
+                <p className="mt-1 text-xs text-muted">
+                  {inv.date.toLocaleDateString(undefined, {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                  })}
+                  {inv.summary && <> · {inv.summary}</>}
+                </p>
+              </div>
+              <p className="font-mono text-sm font-medium text-foreground tabular-nums">
+                {formatMoney(inv.amount, inv.currency)}
+              </p>
+              {inv.pdfUrl ? (
+                <a
+                  href={inv.pdfUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-border-strong px-3 py-1 text-xs text-muted transition-colors hover:border-accent hover:text-accent"
+                >
+                  <Download className="h-3 w-3" />
+                  PDF
+                </a>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function InvoiceStatusBadge({ status }: { status: ClientInvoice["status"] }) {
+  const variants: Record<
+    ClientInvoice["status"],
+    { label: string; cls: string }
+  > = {
+    paid: {
+      label: "Paid",
+      cls: "bg-success/10 text-success ring-success/30",
+    },
+    open: {
+      label: "Open",
+      cls: "bg-accent-soft text-accent ring-accent/30",
+    },
+    void: {
+      label: "Void",
+      cls: "bg-muted/10 text-muted ring-muted/20",
+    },
+    uncollectible: {
+      label: "Uncollectible",
+      cls: "bg-warning/10 text-warning ring-warning/30",
+    },
+    draft: {
+      label: "Draft",
+      cls: "bg-muted/10 text-muted ring-muted/20",
+    },
+  };
+  const v = variants[status];
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] ring-1 ring-inset",
+        v.cls
+      )}
+    >
+      {v.label}
+    </span>
+  );
+}
+
+function formatMoney(amountCents: number, currency: string): string {
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency: currency.toUpperCase(),
+    }).format(amountCents / 100);
+  } catch {
+    return `$${(amountCents / 100).toFixed(2)}`;
+  }
 }
