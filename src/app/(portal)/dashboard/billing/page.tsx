@@ -69,6 +69,7 @@ const PLAN_FEATURES: Record<
       "24/7 uptime monitoring + automatic backups",
       "Direct messaging with your doctor",
       "Monthly report from your doctor",
+      "And more",
     ],
   },
   premium: {
@@ -86,6 +87,7 @@ const PLAN_FEATURES: Record<
       "Staging environment + safe deploy workflow",
       "Quarterly strategy + roadmap session",
       "Custom builds — mobile apps, integrations, bespoke features (priced separately)",
+      "And more",
     ],
   },
 };
