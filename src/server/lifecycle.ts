@@ -7,6 +7,7 @@ import { requireStaff, requireFounder } from "@/lib/auth-helpers";
 import { sendBrandEmail } from "@/lib/email";
 import { site } from "@/lib/site";
 import { recordAudit } from "@/server/audit";
+import { getStripe } from "@/lib/stripe";
 
 /**
  * Founder-only account lifecycle: suspend / un-suspend / delete a
@@ -223,6 +224,28 @@ export async function pauseClient(formData: FormData): Promise<LifecycleResult> 
     .set({ status: "paused", statusReason: reason, updatedAt: new Date() })
     .where(eq(clients.id, clientId));
 
+  // Pause Stripe billing too — collecting money from a paused patient
+  // generates support tickets at best, refund/chargeback liability at
+  // worst. `pause_collection: mark_uncollectible` keeps the subscription
+  // alive (so we don't lose history) but stops Stripe from charging or
+  // sending dunning emails until we unpause.
+  const stripe = getStripe();
+  if (stripe && target.stripeSubscriptionId) {
+    try {
+      await stripe.subscriptions.update(target.stripeSubscriptionId, {
+        pause_collection: { behavior: "mark_uncollectible" },
+      });
+    } catch (err) {
+      console.error(
+        "[lifecycle.pauseClient] Stripe pause_collection failed",
+        { subId: target.stripeSubscriptionId },
+        err
+      );
+      // Don't block the DB-level pause on Stripe failure; the admin
+      // can retry from the dashboard. Audit log captures the partial.
+    }
+  }
+
   await recordAudit({
     actorUserId: session.user.id,
     action: "client.pause",
@@ -258,6 +281,22 @@ export async function unpauseClient(
     .update(clients)
     .set({ status: "active", statusReason: null, updatedAt: new Date() })
     .where(eq(clients.id, clientId));
+
+  // Resume Stripe billing — undo the pause_collection set by pauseClient.
+  const stripe = getStripe();
+  if (stripe && target.stripeSubscriptionId) {
+    try {
+      await stripe.subscriptions.update(target.stripeSubscriptionId, {
+        pause_collection: null,
+      });
+    } catch (err) {
+      console.error(
+        "[lifecycle.unpauseClient] Stripe resume failed",
+        { subId: target.stripeSubscriptionId },
+        err
+      );
+    }
+  }
 
   await recordAudit({
     actorUserId: session.user.id,
@@ -303,6 +342,26 @@ export async function dischargeClient(
       updatedAt: new Date(),
     })
     .where(eq(clients.id, clientId));
+
+  // Cancel the Stripe subscription so we stop billing a discharged
+  // patient — otherwise the next renewal cycle silently charges them
+  // and the webhook flips status back to "active". Use cancel_at_period_end
+  // so they keep access until their already-paid period expires
+  // (consistent with how cancel works in the Stripe portal).
+  const stripe = getStripe();
+  if (stripe && target.stripeSubscriptionId) {
+    try {
+      await stripe.subscriptions.update(target.stripeSubscriptionId, {
+        cancel_at_period_end: true,
+      });
+    } catch (err) {
+      console.error(
+        "[lifecycle.dischargeClient] Stripe cancel failed",
+        { subId: target.stripeSubscriptionId },
+        err
+      );
+    }
+  }
 
   await recordAudit({
     actorUserId: session.user.id,

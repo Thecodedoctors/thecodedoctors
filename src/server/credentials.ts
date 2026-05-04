@@ -149,13 +149,20 @@ export async function getCredentialRequestForCurrentUser(
   };
 }
 
-/** Patient submits values. Encrypts + stores; emails the founder. */
+/** Patient submits values. Encrypts + stores; emails the founder.
+ *
+ * Validation failures redirect back to the credential page with an
+ * `error=…` query so the client component can render a banner instead
+ * of the form silently re-rendering with no feedback.
+ */
 export async function submitCredentialRequest(
   formData: FormData
 ): Promise<void> {
   const session = await requireUser();
   const requestId = String(formData.get("requestId") ?? "");
-  if (!requestId) return;
+  if (!requestId) {
+    redirect("/dashboard/credentials?error=missing-id");
+  }
 
   const rows = await db()
     .select()
@@ -163,11 +170,17 @@ export async function submitCredentialRequest(
     .where(eq(credentialRequests.id, requestId))
     .limit(1);
   const cred = rows[0];
-  if (!cred) return;
+  if (!cred) {
+    redirect("/dashboard/credentials?error=not-found");
+  }
 
   const allowed = await userBelongsToClient(session.user.id, cred.clientId);
-  if (!allowed) return;
-  if (cred.submittedAt || cred.closedAt) return; // already submitted / closed
+  if (!allowed) {
+    redirect("/dashboard/credentials?error=forbidden");
+  }
+  if (cred.submittedAt || cred.closedAt) {
+    redirect(`/dashboard/credentials/${requestId}?error=already-submitted`);
+  }
 
   if (!isCredentialCryptoConfigured()) {
     throw new Error(
@@ -179,7 +192,9 @@ export async function submitCredentialRequest(
   const payload: Record<string, string> = {};
   for (const f of fields) {
     const v = String(formData.get(f.key) ?? "").slice(0, MAX_FIELD_VALUE);
-    if (f.required && !v.trim()) return; // form should have caught it
+    if (f.required && !v.trim()) {
+      redirect(`/dashboard/credentials/${requestId}?error=missing-required`);
+    }
     payload[f.key] = v;
   }
 

@@ -1,4 +1,4 @@
-import { db, clients, clientMembers, requests, type Client } from "@/db";
+import { db, clients, clientMembers, requests, users, type Client } from "@/db";
 import { eq, and, sql, isNotNull, desc } from "drizzle-orm";
 
 /**
@@ -8,6 +8,12 @@ import { eq, and, sql, isNotNull, desc } from "drizzle-orm";
  *
  * For users on multiple teams later, this returns the FIRST membership.
  * Multi-org switching can be Phase 3 v2.
+ *
+ * Refuses to auto-create for STAFF roles (doctor/founder/etc.) — they
+ * shouldn't be patients and an auto-created phantom client pollutes
+ * the admin pipeline. If a staff user reaches this code path it means
+ * a layout bounced them to the patient hub by mistake; we throw so
+ * the bug surfaces instead of silently corrupting data.
  */
 export async function getOrCreateClientForUser(
   userId: string,
@@ -23,6 +29,22 @@ export async function getOrCreateClientForUser(
 
   if (existing.length > 0) {
     return existing[0].client;
+  }
+
+  // Refuse auto-create for staff roles. Auto-creating a "Patient" client
+  // for a doctor/founder pollutes the admin queue and gives them a phantom
+  // billing surface. The caller (a layout or server component) should
+  // gate on role and route staff to /admin instead of asking for a client.
+  const userRow = await db()
+    .select({ role: users.role })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  if (userRow[0]?.role && userRow[0].role !== "client") {
+    throw new Error(
+      `Refusing to auto-create a client for staff user (role=${userRow[0].role}). ` +
+        `The caller should route staff to /admin before reaching the patient surface.`
+    );
   }
 
   // Create a default client and membership.
@@ -142,6 +164,11 @@ export async function requireActiveOrTrialing(client: {
         };
       }
     }
+    // Past-due / unpaid / incomplete-expired customers should NOT pass.
+    // We mirror Stripe's status into client.status via the webhook, so
+    // a card-declining customer ends up with status = "lead" → caught
+    // by the status check above. Period-end is the explicit secondary
+    // gate for cancellations.
     return { ok: true };
   }
   // No subscription → must be in an active trial.

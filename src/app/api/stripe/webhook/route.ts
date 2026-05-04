@@ -248,6 +248,25 @@ async function applySubscriptionUpdate(
   const planUpdate: { plan: "general" | "premium" } =
     plan === "premium" ? { plan: "premium" } : { plan: "general" };
 
+  // Don't clobber locally-set lifecycle states. If ops has paused or
+  // discharged this patient, keep that status; the Stripe sub being
+  // active doesn't override the operational decision. We only flip
+  // status here for the active↔lead transition (renewal, payment
+  // recovery), never overwriting paused/discharged.
+  const currentRow = await db()
+    .select({ status: clients.status })
+    .from(clients)
+    .where(eq(clients.id, clientId))
+    .limit(1);
+  const currentStatus = currentRow[0]?.status ?? "lead";
+  const lockedByOps =
+    currentStatus === "paused" || currentStatus === "discharged";
+  const nextStatus = lockedByOps
+    ? currentStatus
+    : isActive
+      ? "active"
+      : "lead";
+
   await db()
     .update(clients)
     .set({
@@ -258,7 +277,7 @@ async function applySubscriptionUpdate(
       trialEndsAt,
       cancelAtPeriodEnd: subType.cancel_at_period_end,
       mrrCents: isActive && !subType.cancel_at_period_end ? monthlyCents : 0,
-      status: isActive ? "active" : "lead",
+      status: nextStatus,
       updatedAt: new Date(),
     })
     .where(eq(clients.id, clientId));

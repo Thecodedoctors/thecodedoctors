@@ -236,6 +236,14 @@ export async function upgradeSubscriptionForCurrentUser(
   if (currentPriceId === newPriceId) {
     redirect(portalActionRedirect("/dashboard/billing?upgrade=not-higher"));
   }
+  // Block yearly → monthly cadence "switches" — they're effectively
+  // downgrades (less revenue per period, refund-creating prorations
+  // with always_invoice). The UI doesn't expose this path, but a
+  // crafted form submission could otherwise sneak through.
+  const { interval: currentInterval } = planFromPriceId(currentPriceId);
+  if (currentInterval === "yearly" && interval === "monthly") {
+    redirect(portalActionRedirect("/dashboard/billing?upgrade=not-higher"));
+  }
 
   // Stripe.subscriptions.update can throw for any number of reasons
   // (price archived on the wrong account, currency mismatch, customer
@@ -380,7 +388,11 @@ export async function listInvoicesForCurrentUser(): Promise<ClientInvoice[]> {
       id: inv.id ?? "",
       number: inv.number ?? inv.id ?? "",
       date: new Date((inv.created ?? Math.floor(Date.now() / 1000)) * 1000),
-      amount: inv.amount_paid > 0 ? inv.amount_paid : inv.amount_due,
+      // Always show the invoice's original total — falling back to
+      // amount_paid would render voided/uncollectible invoices as $0,
+      // which looks like a refund. The status badge separately conveys
+      // whether the customer was charged or not.
+      amount: inv.total ?? inv.amount_due ?? 0,
       currency: inv.currency ?? "usd",
       status: (inv.status ?? "open") as ClientInvoice["status"],
       summary:
@@ -514,15 +526,35 @@ export async function setDefaultPaymentMethodForCurrentUser(
 
   // Authorization: confirm the payment method actually belongs to this
   // customer. Without this, a determined user could pass another
-  // customer's payment_method id.
-  const pm = await stripe.paymentMethods.retrieve(paymentMethodId);
+  // customer's payment_method id. Wrapped in try/catch so a malformed
+  // PM id throws a banner instead of bubbling to the Critical page.
+  let pm;
+  try {
+    pm = await stripe.paymentMethods.retrieve(paymentMethodId);
+  } catch (err) {
+    console.error(
+      "[billing.setDefaultPaymentMethod] retrieve failed",
+      { paymentMethodId },
+      err
+    );
+    redirect(portalActionRedirect("/dashboard/billing?card=invalid"));
+  }
   if (pm.customer !== client.stripeCustomerId) {
     redirect(portalActionRedirect("/dashboard/billing?card=forbidden"));
   }
 
-  await stripe.customers.update(client.stripeCustomerId, {
-    invoice_settings: { default_payment_method: paymentMethodId },
-  });
+  try {
+    await stripe.customers.update(client.stripeCustomerId, {
+      invoice_settings: { default_payment_method: paymentMethodId },
+    });
+  } catch (err) {
+    console.error(
+      "[billing.setDefaultPaymentMethod] customers.update failed",
+      { paymentMethodId },
+      err
+    );
+    redirect(portalActionRedirect("/dashboard/billing?card=invalid"));
+  }
 
   await recordAudit({
     actorUserId: session.user.id,

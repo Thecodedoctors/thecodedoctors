@@ -171,10 +171,31 @@ export async function addMessage(
 
 /**
  * Get messages for a request, scoped to the caller's role.
- * Clients never see internal notes.
+ *
+ * Authorization: clients can only read messages on requests belonging
+ * to their own client. Without this guard, any signed-in user could
+ * call this server action with a guessed/leaked request UUID and read
+ * another patient's thread (the file is "use server" so every export
+ * is a callable wire endpoint). Staff bypass the membership check.
+ *
+ * Clients also never see internal notes.
  */
 export async function listMessagesForRequest(requestId: string) {
   const session = await requireUser();
+
+  if (!isStaff(session.user.role)) {
+    const reqRow = await db()
+      .select({ clientId: requests.clientId })
+      .from(requests)
+      .where(eq(requests.id, requestId))
+      .limit(1);
+    if (reqRow.length === 0) return [];
+    const allowed = await userBelongsToClient(
+      session.user.id,
+      reqRow[0].clientId
+    );
+    if (!allowed) return [];
+  }
 
   const rows = await db()
     .select({

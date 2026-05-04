@@ -477,12 +477,21 @@ export async function updateRequestStatus(formData: FormData): Promise<void> {
 /**
  * Patient approves a deliverable — moves status from in_review to healed.
  * Spec §4.1 journey 6, §5 capability matrix.
+ *
+ * Failure paths redirect back to the request page with `?error=…` so
+ * the client component can render a banner instead of the form
+ * silently re-rendering with no feedback.
  */
 export async function approveRequest(formData: FormData): Promise<void> {
   const session = await requireUser("/dashboard");
   const requestId = String(formData.get("requestId") ?? "");
-  if (!requestId) return;
-  if (isStaff(session.user.role)) return; // staff don't self-approve
+  if (!requestId) {
+    redirect("/dashboard/requests?error=missing-id");
+  }
+  if (isStaff(session.user.role)) {
+    // Staff don't self-approve; bounce to the staff view of the request.
+    redirect(`/admin/requests/${requestId}?error=staff-cant-approve`);
+  }
 
   const before = await db()
     .select({
@@ -493,14 +502,20 @@ export async function approveRequest(formData: FormData): Promise<void> {
     .innerJoin(clients, eq(clients.id, requests.clientId))
     .where(eq(requests.id, requestId))
     .limit(1);
-  if (before.length === 0) return;
+  if (before.length === 0) {
+    redirect("/dashboard/requests?error=not-found");
+  }
   const prev = before[0].request;
   const clientName = before[0].clientName;
-  if (prev.status !== "in_review") return;
+  if (prev.status !== "in_review") {
+    redirect(`/dashboard/requests/${requestId}?error=not-in-review`);
+  }
 
   // Authorization: must belong to the request's client.
   const ok = await userBelongsToClient(session.user.id, prev.clientId);
-  if (!ok) return;
+  if (!ok) {
+    redirect("/dashboard/requests?error=forbidden");
+  }
 
   await db()
     .update(requests)
