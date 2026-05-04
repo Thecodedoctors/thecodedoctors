@@ -165,47 +165,10 @@ export async function verifyEmailWithCode(formData: FormData): Promise<void> {
   redirect("/dashboard?verified=just-now");
 }
 
-/**
- * Magic-link variant — token comes from the URL query. No body, the
- * /verify-email page just calls this and renders the result. No
- * session required since the token itself is unguessable proof.
- */
-export async function verifyEmailWithToken(
-  token: string
-): Promise<VerifyResult> {
-  if (!token || token.length < 24 || token.length > 64) {
-    return { ok: false, error: "Invalid verification link." };
-  }
-
-  const rows = await db()
-    .select({
-      id: users.id,
-      sentAt: users.emailVerificationSentAt,
-      verifiedAt: users.emailVerified,
-    })
-    .from(users)
-    .where(eq(users.emailVerificationToken, token))
-    .limit(1);
-  const row = rows[0];
-  if (!row) {
-    return { ok: false, error: "This verification link doesn't match any account — it may have been replaced by a newer one." };
-  }
-  if (row.verifiedAt) {
-    return { ok: true };
-  }
-  if (
-    !row.sentAt ||
-    Date.now() - row.sentAt.getTime() > CODE_TTL_HOURS * 60 * 60 * 1000
-  ) {
-    return {
-      ok: false,
-      error: "This verification link expired. Request a fresh one from your dashboard.",
-    };
-  }
-
-  await markVerified(row.id);
-  return { ok: true };
-}
+// `verifyEmailWithToken` lives in src/lib/email-verification-core.ts.
+// It's a plain async function (NOT a server action) so the page can
+// call it from a Server Component render and then `redirect()`
+// without Next confusing the action-return + redirect sequence.
 
 async function markVerified(userId: string): Promise<void> {
   await db()

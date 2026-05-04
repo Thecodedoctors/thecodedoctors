@@ -6,10 +6,10 @@ import { auth } from "@/auth";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/logo";
 import {
-  verifyEmailWithToken,
   verifyEmailWithCode,
   resendVerificationCode,
 } from "@/server/email-verification";
+import { verifyEmailWithToken } from "@/lib/email-verification-core";
 import { resolvePortalRedirect } from "@/lib/portal-redirect";
 
 export const metadata: Metadata = {
