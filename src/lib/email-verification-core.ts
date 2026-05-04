@@ -13,7 +13,6 @@
 
 import { db, users } from "@/db";
 import { eq } from "drizzle-orm";
-import { revalidatePath } from "next/cache";
 import { recordAudit } from "@/server/audit";
 
 const CODE_TTL_HOURS = 24;
@@ -83,7 +82,11 @@ export async function verifyEmailWithToken(
     targetId: row.id,
   });
 
-  revalidatePath("/dashboard");
+  // Intentionally no revalidatePath() here — calling it from this
+  // module's render-path context tripped Next 16's response framing
+  // and turned the post-verification redirect into a 500. The
+  // /dashboard layout fetches the user row fresh on every request
+  // anyway, so cache-revalidation isn't load-bearing.
 
   return { ok: true };
 }
