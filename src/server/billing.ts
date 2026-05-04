@@ -144,6 +144,36 @@ export async function startCheckoutForCurrentUser(
       .where(eq(clients.id, client.id));
   }
 
+  // Checkup → Care credit: if this client originally bought the $599
+  // Checkup and is now upgrading to a recurring plan, apply the
+  // promised $599 credit to their Stripe customer balance. Stripe
+  // automatically deducts this from the next invoice(s) — so a General
+  // Care month-1 invoice ($299) ends up at $0 due, with $300 carrying
+  // forward to month 2.
+  //
+  // Idempotency: only apply if the customer's current balance is >= 0
+  // (i.e. no credit already on file), to prevent double-credit if the
+  // user retries checkout multiple times.
+  if (client.plan === "checkup" && customerId) {
+    try {
+      const customer = await stripe.customers.retrieve(customerId);
+      if (!customer.deleted && (customer.balance ?? 0) >= 0) {
+        await stripe.customers.update(customerId, {
+          balance: -59900,
+          metadata: {
+            ...(customer.metadata ?? {}),
+            checkup_credit_applied_at: new Date().toISOString(),
+          },
+        });
+      }
+    } catch (err) {
+      console.error(
+        "[billing.startCheckout] checkup credit application failed (non-fatal)",
+        err
+      );
+    }
+  }
+
   const checkoutSession = await stripe.checkout.sessions.create({
     mode: "subscription",
     customer: customerId,
@@ -152,6 +182,10 @@ export async function startCheckoutForCurrentUser(
     cancel_url: `${site.url}/dashboard/billing?checkout=canceled`,
     allow_promotion_codes: true,
     billing_address_collection: "auto",
+    // Apply customer balance to the first invoice automatically — without
+    // this Stripe Checkout treats balance as a future-invoice credit
+    // only and "due today" stays at full plan price. Setting this also
+    // surfaces the credit in Checkout's UI as a discount line.
     subscription_data: {
       metadata: { clientId: client.id, plan, interval },
     },
