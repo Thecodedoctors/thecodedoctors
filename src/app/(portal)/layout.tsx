@@ -8,9 +8,12 @@ import { requireClient } from "@/lib/auth-helpers";
  * `auth()` call we used to use here didn't, so a freshly-suspended
  * staff member kept their session until JWT expiry).
  *
- * Two-factor: when `TWO_FACTOR_ENFORCED=true` is set on the env, any
- * patient without a configured authenticator is bounced to
- * /settings/security until they set one up.
+ * Two-factor enforcement: only patients explicitly flagged as
+ * `twoFactorRequired` (set per-user by an admin via the team page or
+ * SQL) get bounced to /settings/security to enroll. The default
+ * patient experience has 2FA optional — forcing it on every patient
+ * adds enrollment friction at every sign-up that hurts conversion.
+ * Staff get blanket enforcement in their own layout.
  */
 import { AppShell } from "@/components/portal/app-shell";
 
@@ -20,10 +23,7 @@ export default async function ClientPortalLayout({
   children: React.ReactNode;
 }) {
   const session = await requireClient("/dashboard");
-  if (
-    process.env.TWO_FACTOR_ENFORCED === "true" &&
-    !session.user.totpEnabled
-  ) {
+  if (session.user.twoFactorRequired && !session.user.totpEnabled) {
     const h = await headers();
     const path = h.get("x-pathname") ?? "";
     const onSecurityPage =

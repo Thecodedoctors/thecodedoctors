@@ -9,9 +9,11 @@ import { AppShell } from "@/components/portal/app-shell";
  * we used to call here didn't, so a freshly-suspended doctor kept
  * working until JWT expiry).
  *
- * Two-factor: when `TWO_FACTOR_ENFORCED=true` is set on the env, any
- * staff user without a configured authenticator is bounced to
- * /settings/security on every page except that one.
+ * Two-factor enforcement: every staff user has `twoFactorRequired`
+ * automatically set to true via the auth.ts session callback, so any
+ * staff user without TOTP enrolled is bounced to /settings/security
+ * on every page except that one. No env-flag toggle — staff are
+ * always required to use 2FA, no exceptions.
  */
 export default async function AdminLayout({
   children,
@@ -19,10 +21,7 @@ export default async function AdminLayout({
   children: React.ReactNode;
 }) {
   const session = await requireStaff("/admin");
-  if (
-    process.env.TWO_FACTOR_ENFORCED === "true" &&
-    !session.user.totpEnabled
-  ) {
+  if (session.user.twoFactorRequired && !session.user.totpEnabled) {
     const h = await headers();
     const path = h.get("x-pathname") ?? "";
     const onSecurityPage =
