@@ -195,6 +195,31 @@ export function emailSiteRecovered(args: {
   return { subject, html };
 }
 
+/**
+ * Email verification — sent post-payment so brand-new patients confirm
+ * the inbox they signed up with. Two ways to verify: click the magic
+ * link in the email (opens /verify-email?token=…) OR type the 6-digit
+ * code into the dashboard banner. Either path flips emailVerified to
+ * NOW on the user row.
+ */
+export function renderEmailVerifyEmail(args: {
+  name: string;
+  code: string;
+  link: string;
+}): string {
+  return renderEmail({
+    eyebrow: "Verify your email",
+    title: `Hi ${escape(args.name)} — confirm this is your inbox.`,
+    body: `<p style="margin:0 0 16px 0;color:${COLORS.muted};font-size:14px;line-height:1.55;">Click the button below, or enter this 6-digit code on your dashboard:</p>
+           <div style="margin:0 0 18px 0;padding:18px 14px;border:1px solid ${COLORS.border};border-radius:12px;background:${COLORS.bg};text-align:center;">
+             <div style="font-family:ui-monospace,monospace;font-size:32px;letter-spacing:0.4em;font-weight:600;color:${COLORS.accent};">${escape(args.code)}</div>
+             <div style="margin-top:6px;font-size:11px;color:${COLORS.muted};">Expires in 24 hours</div>
+           </div>
+           <p style="margin:0;color:${COLORS.muted};font-size:12px;line-height:1.55;">If you didn't sign up, ignore this email — nothing else happens until you click or enter the code.</p>`,
+    cta: { label: "Verify my email", href: args.link },
+  });
+}
+
 /* ──────────────────────────────────────────────────────────────────────────
    Shared template renderer
    ──────────────────────────────────────────────────────────────────────── */

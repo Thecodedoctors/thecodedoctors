@@ -211,6 +211,19 @@ export async function finalizePendingSignupBySessionId(
     },
   });
 
+  // Fire-and-forget: send the verification email so the patient can
+  // confirm ownership at their leisure post-payment. Failure here does
+  // NOT block finalize — the patient can resend from the dashboard
+  // banner if the first send didn't land.
+  try {
+    const { sendVerificationCodeForUserId } = await import(
+      "@/server/email-verification"
+    );
+    await sendVerificationCodeForUserId(userId);
+  } catch (err) {
+    console.error("[finalize] verification email send failed (non-fatal)", err);
+  }
+
   return {
     ok: true,
     email: pending.email,

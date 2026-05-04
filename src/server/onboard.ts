@@ -14,6 +14,7 @@ import {
 } from "@/lib/stripe";
 import { site } from "@/lib/site";
 import { normalizeWebsiteUrl } from "@/lib/url";
+import { validateEmailDeliverability } from "@/lib/email-validation";
 
 /**
  * Commitment-driven sign-up paths. The /login page does NOT create
@@ -168,6 +169,15 @@ async function validateOnboardForm(
     return { ok: false, error: "Tell us your name (at least 2 characters)." };
   if (!isValidEmail(email))
     return { ok: false, error: "That doesn't look like a valid email." };
+
+  // Plausibility check — reject disposable domains + typo'd domains
+  // with no MX records before charging anyone. Real proof-of-ownership
+  // verification happens post-payment via the 6-digit code.
+  const emailCheck = await validateEmailDeliverability(email);
+  if (!emailCheck.ok) {
+    return { ok: false, error: emailCheck.message };
+  }
+
   if (password.length < 8)
     return { ok: false, error: "Pick a password of 8+ characters." };
   const normalizedUrl = normalizeWebsiteUrl(websiteUrl);

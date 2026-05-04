@@ -17,6 +17,7 @@ export function AppShell({
   variant,
   user,
   children,
+  topBanner,
 }: {
   variant: Variant;
   user: {
@@ -26,6 +27,9 @@ export function AppShell({
     role?: string;
   };
   children: React.ReactNode;
+  /** Optional persistent banner (e.g. email verification). Renders
+   *  above the main content but below the topbar. Pass null to hide. */
+  topBanner?: React.ReactNode;
 }) {
   // Sign out is a Server Action passed down to the client UserMenu component.
   const signOutAction = async () => {
@@ -43,6 +47,7 @@ export function AppShell({
           signOutAction={signOutAction}
           bell={<NotificationsBell variant={variant} />}
         />
+        {topBanner}
         <main className="flex-1">{children}</main>
         <BottomNav variant={variant} />
       </div>

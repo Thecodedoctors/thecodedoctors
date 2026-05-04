@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
+import { eq } from "drizzle-orm";
 import { requireClient } from "@/lib/auth-helpers";
+import { db, users } from "@/db";
 
 /**
  * Client portal layout. Auth-gated via `requireClient` — that helper
@@ -14,8 +16,13 @@ import { requireClient } from "@/lib/auth-helpers";
  * patient experience has 2FA optional — forcing it on every patient
  * adds enrollment friction at every sign-up that hurts conversion.
  * Staff get blanket enforcement in their own layout.
+ *
+ * Email verification: every patient page renders a top-of-page banner
+ * if `users.emailVerified` is null. Doesn't block anything — just a
+ * persistent nudge until they confirm their inbox.
  */
 import { AppShell } from "@/components/portal/app-shell";
+import { EmailVerificationBanner } from "@/components/portal/email-verification-banner";
 
 export default async function ClientPortalLayout({
   children,
@@ -33,6 +40,14 @@ export default async function ClientPortalLayout({
     }
   }
 
+  // One row read for the banner — pulls only the verified flag.
+  const userRow = await db()
+    .select({ verifiedAt: users.emailVerified })
+    .from(users)
+    .where(eq(users.id, session.user.id))
+    .limit(1);
+  const emailVerifiedAt = userRow[0]?.verifiedAt ?? null;
+
   return (
     <AppShell
       variant="client"
@@ -42,6 +57,7 @@ export default async function ClientPortalLayout({
         name: session.user.name,
         role: session.user.role,
       }}
+      topBanner={<EmailVerificationBanner verifiedAt={emailVerifiedAt} />}
     >
       {children}
     </AppShell>

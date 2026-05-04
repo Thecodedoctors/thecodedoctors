@@ -96,6 +96,19 @@ export const users = pgTable("user", {
   referralCode: text("referral_code"),
   totpSecret: text("totp_secret"), // encrypted at the app layer
   totpEnabled: boolean("totp_enabled").notNull().default(false),
+  /** Email verification — sent post-payment. Auth.js's `emailVerified`
+   *  timestamp (above) is set when the patient confirms ownership; the
+   *  three columns below hold the in-flight code/token state. The
+   *  hashed code is the 6-digit shortcode we ask them to type; the
+   *  raw token is the magic-link variant they can click instead. */
+  emailVerificationCodeHash: text("email_verification_code_hash"),
+  emailVerificationToken: text("email_verification_token"),
+  emailVerificationSentAt: timestamp("email_verification_sent_at", {
+    mode: "date",
+  }),
+  emailVerificationAttempts: integer("email_verification_attempts")
+    .notNull()
+    .default(0),
   /** PBKDF2 hashes of single-use recovery codes generated at TOTP
    *  setup. JSON-encoded array. Each code is consumed by removing
    *  its hash from the array. */
