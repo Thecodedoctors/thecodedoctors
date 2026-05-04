@@ -196,6 +196,13 @@ function Banners({
           body="Use the Stripe portal below to downgrade — we don't surface that on-site."
         />
       )}
+      {params.upgrade === "failed" && (
+        <Banner
+          tone="warning"
+          title="We couldn't switch your plan"
+          body="Stripe rejected the change. Your existing plan is unaffected. Email hello@thecodedoctors.com and we'll sort it out."
+        />
+      )}
       {params.upgrade === "no-subscription" && (
         <Banner
           tone="muted"
@@ -353,11 +360,18 @@ function ActiveSubscriptionCard({
         <form action={openCustomerPortalForCurrentUser}>
           <Button type="submit" variant="secondary" size="sm">
             <Settings className="h-3.5 w-3.5" />
-            Cancel or view invoices
+            View invoices
           </Button>
         </form>
         <p className="text-xs text-muted">
-          Cancel, downgrade, or grab past invoices on Stripe.
+          Want to cancel?{" "}
+          <a
+            href="mailto:hello@thecodedoctors.com?subject=Cancel%20my%20plan"
+            className="text-foreground underline decoration-border-strong underline-offset-4 hover:decoration-accent"
+          >
+            Email us
+          </a>{" "}
+          and we&apos;ll take care of it.
         </p>
       </div>
     </section>
@@ -428,37 +442,43 @@ function CurrentPlanCard({
       ? `$${meta.yearlyMonthlyEquivalent}/mo · billed yearly`
       : `$${meta.monthlyPrice}/mo`;
 
+  // The "your plan" info is rendered at reduced opacity to signal it's
+  // the current state (informational, not actionable). The yearly-switch
+  // CTA below it is fully active — it must NOT inherit the opacity, so
+  // it lives outside the dimmed wrapper as a sibling.
   return (
-    <div className="rounded-2xl border border-border bg-surface/30 p-6 opacity-70">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted">
-            Your plan
-          </p>
-          <p className="mt-2 text-xl font-semibold tracking-tight text-muted-strong">
-            {meta.label}
-          </p>
-          <p className="mt-1 font-mono text-sm text-muted">{priceLabel}</p>
+    <div className="rounded-2xl border border-border bg-surface/30 p-6">
+      <div className="opacity-70">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted">
+              Your plan
+            </p>
+            <p className="mt-2 text-xl font-semibold tracking-tight text-muted-strong">
+              {meta.label}
+            </p>
+            <p className="mt-1 font-mono text-sm text-muted">{priceLabel}</p>
+          </div>
+          <span className="grid h-9 w-9 place-items-center rounded-lg bg-muted/10 text-muted ring-1 ring-inset ring-muted/20">
+            <CheckCircle2 className="h-4 w-4" />
+          </span>
         </div>
-        <span className="grid h-9 w-9 place-items-center rounded-lg bg-muted/10 text-muted ring-1 ring-inset ring-muted/20">
-          <CheckCircle2 className="h-4 w-4" />
-        </span>
+        <ul className="mt-5 space-y-2 text-sm text-muted">
+          {meta.features.map((f) => (
+            <li key={f} className="flex items-start gap-2 leading-relaxed">
+              <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted" />
+              <span>{f}</span>
+            </li>
+          ))}
+        </ul>
       </div>
-      <ul className="mt-5 space-y-2 text-sm text-muted">
-        {meta.features.map((f) => (
-          <li key={f} className="flex items-start gap-2 leading-relaxed">
-            <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted" />
-            <span>{f}</span>
-          </li>
-        ))}
-      </ul>
       {showYearlySwitch && (
         <form action={upgradeSubscriptionForCurrentUser} className="mt-5">
           <input type="hidden" name="plan" value={tier} />
           <input type="hidden" name="interval" value="yearly" />
           <button
             type="submit"
-            className="w-full rounded-xl border border-accent/40 bg-accent-soft/20 px-4 py-3 text-left transition-colors hover:bg-accent-soft/40"
+            className="group w-full rounded-xl border border-accent/50 bg-accent-soft/30 px-4 py-3 text-left transition-colors hover:border-accent hover:bg-accent-soft/50"
           >
             <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">
               Switch to yearly · save 15%

@@ -15,6 +15,7 @@ import {
 } from "@/lib/stripe";
 import { site } from "@/lib/site";
 import { recordAudit } from "@/server/audit";
+import { portalActionRedirect } from "@/lib/portal-redirect";
 
 /**
  * Patient-side billing helpers.
@@ -124,7 +125,7 @@ export async function startCheckoutForCurrentUser(
   // start a second one. The UI shouldn't expose this path either, but a
   // determined user (or a stale tab) shouldn't be able to double-pay.
   if (client.stripeSubscriptionId) {
-    redirect("/dashboard/billing?checkout=already-subscribed");
+    redirect(portalActionRedirect("/dashboard/billing?checkout=already-subscribed"));
   }
 
   // Reuse the existing Stripe customer if we already created one for this
@@ -186,7 +187,7 @@ export async function upgradeSubscriptionForCurrentUser(
   const session = await requireUser();
   const planRaw = String(formData.get("plan") ?? "");
   if (planRaw !== "general" && planRaw !== "premium") {
-    redirect("/dashboard/billing?upgrade=invalid");
+    redirect(portalActionRedirect("/dashboard/billing?upgrade=invalid"));
   }
   const plan: PlanKey = planRaw;
 
@@ -207,7 +208,7 @@ export async function upgradeSubscriptionForCurrentUser(
 
   if (!client.stripeSubscriptionId) {
     // Nothing to upgrade from — fall through to the regular subscribe path.
-    redirect("/dashboard/billing?upgrade=no-subscription");
+    redirect(portalActionRedirect("/dashboard/billing?upgrade=no-subscription"));
   }
 
   // Refuse downgrades; the Stripe portal handles those. Same-tier
@@ -218,7 +219,7 @@ export async function upgradeSubscriptionForCurrentUser(
   const currentRank = PLAN_RANK[currentPlan as PlanKey] ?? 0;
   const targetRank = PLAN_RANK[plan];
   if (targetRank < currentRank) {
-    redirect("/dashboard/billing?upgrade=not-higher");
+    redirect(portalActionRedirect("/dashboard/billing?upgrade=not-higher"));
   }
 
   // Pull the existing subscription so we know which item to swap.
@@ -233,19 +234,34 @@ export async function upgradeSubscriptionForCurrentUser(
   // Block no-op changes (same plan + same interval). Switching cadence
   // at the same tier is allowed and falls through to update().
   if (currentPriceId === newPriceId) {
-    redirect("/dashboard/billing?upgrade=not-higher");
+    redirect(portalActionRedirect("/dashboard/billing?upgrade=not-higher"));
   }
 
-  const updated = await stripe.subscriptions.update(
-    client.stripeSubscriptionId,
-    {
-      items: [{ id: currentItemId, price: newPriceId }],
-      // Charge the prorated difference on the next invoice line cycle
-      // so the customer pays the delta, not a full second month.
-      proration_behavior: "create_prorations",
-      metadata: { clientId: client.id, plan, interval },
-    }
-  );
+  // Stripe.subscriptions.update can throw for any number of reasons
+  // (price archived on the wrong account, currency mismatch, customer
+  // delinquent, expired card). Catch those explicitly so the user sees
+  // a banner instead of the global Critical error page.
+  let updatedId: string;
+  try {
+    const updated = await stripe.subscriptions.update(
+      client.stripeSubscriptionId,
+      {
+        items: [{ id: currentItemId, price: newPriceId }],
+        // Charge the prorated difference on the next invoice line cycle
+        // so the customer pays the delta, not a full second month.
+        proration_behavior: "create_prorations",
+        metadata: { clientId: client.id, plan, interval },
+      }
+    );
+    updatedId = updated.id;
+  } catch (err) {
+    console.error(
+      "[billing.upgrade] Stripe subscriptions.update failed",
+      { subscriptionId: client.stripeSubscriptionId, plan, interval, newPriceId },
+      err
+    );
+    redirect(portalActionRedirect("/dashboard/billing?upgrade=failed"));
+  }
 
   await recordAudit({
     actorUserId: session.user.id,
@@ -253,7 +269,7 @@ export async function upgradeSubscriptionForCurrentUser(
     targetType: "client",
     targetId: client.id,
     before: { plan: currentPlan },
-    after: { plan, interval, subscriptionId: updated.id },
+    after: { plan, interval, subscriptionId: updatedId },
   });
 
   // The webhook (`customer.subscription.updated`) is the source of truth
@@ -261,7 +277,7 @@ export async function upgradeSubscriptionForCurrentUser(
   // once it lands.
   revalidatePath("/dashboard/billing");
   revalidatePath("/dashboard");
-  redirect("/dashboard/billing?upgrade=success");
+  redirect(portalActionRedirect("/dashboard/billing?upgrade=success"));
 }
 
 /**
@@ -278,7 +294,7 @@ export async function openCustomerPortalForCurrentUser(): Promise<void> {
     email: session.user.email,
   });
   if (!client.stripeCustomerId) {
-    redirect("/dashboard/billing?portal=no-customer");
+    redirect(portalActionRedirect("/dashboard/billing?portal=no-customer"));
   }
 
   const portal = await stripe.billingPortal.sessions.create({
@@ -414,7 +430,7 @@ export async function setDefaultPaymentMethodForCurrentUser(
   const session = await requireUser();
   const paymentMethodId = String(formData.get("paymentMethodId") ?? "");
   if (!paymentMethodId) {
-    redirect("/dashboard/billing?card=invalid");
+    redirect(portalActionRedirect("/dashboard/billing?card=invalid"));
   }
 
   const stripe = getStripe();
@@ -425,7 +441,7 @@ export async function setDefaultPaymentMethodForCurrentUser(
     email: session.user.email,
   });
   if (!client.stripeCustomerId) {
-    redirect("/dashboard/billing?card=no-customer");
+    redirect(portalActionRedirect("/dashboard/billing?card=no-customer"));
   }
 
   // Authorization: confirm the payment method actually belongs to this
@@ -433,7 +449,7 @@ export async function setDefaultPaymentMethodForCurrentUser(
   // customer's payment_method id.
   const pm = await stripe.paymentMethods.retrieve(paymentMethodId);
   if (pm.customer !== client.stripeCustomerId) {
-    redirect("/dashboard/billing?card=forbidden");
+    redirect(portalActionRedirect("/dashboard/billing?card=forbidden"));
   }
 
   await stripe.customers.update(client.stripeCustomerId, {
@@ -449,5 +465,5 @@ export async function setDefaultPaymentMethodForCurrentUser(
   });
 
   revalidatePath("/dashboard/billing");
-  redirect("/dashboard/billing?card=default-set");
+  redirect(portalActionRedirect("/dashboard/billing?card=default-set"));
 }
