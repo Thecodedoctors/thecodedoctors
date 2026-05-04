@@ -63,17 +63,40 @@ export default async function WelcomePage({
   // Happy path: we have the plaintext password from the just-completed
   // signup → sign them in directly. signIn throws NEXT_REDIRECT on
   // success which Next propagates to the browser.
+  //
+  // Anything OTHER than NEXT_REDIRECT thrown from signIn (rate-limit
+  // wedge, race with the just-inserted user, transient DB blip, Auth.js
+  // CredentialsSignin) used to bubble all the way to the global
+  // error.tsx and show the "Critical" page. We now catch those
+  // explicitly and fall through to the manual sign-in form, which is a
+  // graceful UX failure instead of a broken-looking one.
   if (result.autoSigninPassword) {
-    await signIn("credentials", {
-      email: result.email,
-      password: result.autoSigninPassword,
-      redirectTo: "/dashboard",
-    });
-    // Unreachable on success.
+    try {
+      await signIn("credentials", {
+        email: result.email,
+        password: result.autoSigninPassword,
+        redirectTo: "/dashboard",
+      });
+      // Unreachable on success — signIn throws NEXT_REDIRECT.
+    } catch (err) {
+      // NEXT_REDIRECT must propagate so the redirect actually happens.
+      if (
+        err &&
+        typeof err === "object" &&
+        "digest" in err &&
+        String((err as { digest?: unknown }).digest ?? "").startsWith(
+          "NEXT_REDIRECT"
+        )
+      ) {
+        throw err;
+      }
+      // Anything else — log it and fall through to the manual form.
+      console.error("[welcome] auto-signin failed; falling back to manual", err);
+    }
   }
 
   // Fallback: the webhook consumed the pending row before we got here,
-  // or AUTH_SECRET-based decryption failed. Show the manual form.
+  // AUTH_SECRET-based decryption failed, or auto-signin threw above.
   return (
     <ManualSignIn email={result.email} sessionId={session_id} error={error} />
   );
