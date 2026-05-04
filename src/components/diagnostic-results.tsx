@@ -112,18 +112,19 @@ function OverallCard({ report }: { report: CheckupReport }) {
           <h2 className="mt-2 text-balance text-2xl font-semibold tracking-tight md:text-3xl">
             {new URL(report.finalUrl).hostname}
           </h2>
-          <p className="mt-3 text-sm text-muted">
-            {report.overallStatus === "healthy"
-              ? "Your site is in good health overall — there are still some specific things to address below."
-              : report.overallStatus === "needs-attention"
-                ? "We found some symptoms worth treating — see the details below."
-                : "Your site has serious symptoms. The details below explain what to fix first."}
-          </p>
+          <p className="mt-3 text-sm text-muted">{report.overallVerdict}</p>
         </div>
         <div className="md:col-span-5 md:text-right">
           <CountUp target={report.overallScore} />
           <p className="mt-1 font-mono text-sm text-muted">
-            Grade <span className="text-foreground">{report.overallGrade}</span>
+            Grade{" "}
+            <span className={cn("text-foreground", STATUS_TONE[report.overallStatus])}>
+              {report.overallGrade}
+            </span>{" "}
+            <span className="text-muted">·</span>{" "}
+            <span className={cn(STATUS_TONE[report.overallStatus])}>
+              {report.overallRemark}
+            </span>
           </p>
         </div>
       </div>
@@ -158,6 +159,20 @@ function CheckCard({ check }: { check: CheckResult }) {
             </p>
           </div>
           <p className="mt-2 text-sm text-muted">{check.summary}</p>
+          {check.verdict && (
+            <p
+              className={cn(
+                "mt-3 rounded-lg border px-3 py-2 text-xs leading-relaxed",
+                check.status === "critical"
+                  ? "border-signal/30 bg-signal/5 text-foreground"
+                  : check.status === "needs-attention"
+                    ? "border-warning/30 bg-warning/5 text-foreground"
+                    : "border-success/30 bg-success/5 text-foreground"
+              )}
+            >
+              {check.verdict}
+            </p>
+          )}
 
           <button
             type="button"

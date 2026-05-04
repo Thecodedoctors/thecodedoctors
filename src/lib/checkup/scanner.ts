@@ -7,7 +7,14 @@ import { checkDns } from "./checks/dns";
 import { checkPrivacy } from "./checks/privacy";
 import { checkPerformance } from "./checks/performance";
 import type { CheckupReport, CheckResult } from "./types";
-import { clampScore, gradeFromScore, statusFromScore } from "./scoring";
+import {
+  clampScore,
+  gradeFromScore,
+  statusFromScore,
+  remarkForGrade,
+  verdictForOverall,
+  verdictForCheck,
+} from "./scoring";
 
 export { CheckupValidationError } from "./url-validation";
 
@@ -25,7 +32,7 @@ export async function runCheckup(rawUrl: string): Promise<CheckupReport> {
   const finalUrl = new URL(page.finalUrl);
   await validateAndResolve(finalUrl.toString());
 
-  const checks = await Promise.all<CheckResult>([
+  const rawChecks = await Promise.all<CheckResult>([
     Promise.resolve(checkTransport(page)),
     Promise.resolve(checkSecurityHeaders(page)),
     checkSeo(page),
@@ -34,22 +41,23 @@ export async function runCheckup(rawUrl: string): Promise<CheckupReport> {
     checkPerformance(page),
   ]);
 
-  // Weighted aggregate. Security gets the heaviest weight because it's our
-  // brand promise; performance is next because it's the most user-visible.
-  const weights: Record<string, number> = {
-    "security-headers": 25,
-    transport: 20,
-    performance: 20,
-    seo: 15,
-    dns: 15,
-    privacy: 5,
-  };
-  const totalWeight = Object.values(weights).reduce((a, b) => a + b, 0);
-  const weightedSum = checks.reduce(
-    (sum, c) => sum + c.score * (weights[c.id] ?? 10),
-    0
+  // Attach a per-check verdict ("attackers love scores like this" at F,
+  // "keep it up" at A+) so each card carries its own urgency message.
+  const checks = rawChecks.map((c) => ({
+    ...c,
+    verdict: verdictForCheck(c.id, c.score),
+  }));
+
+  // Overall score = the LOWEST sub-score. A site is only as healthy
+  // as its weakest area, and this framing creates honest urgency on
+  // the lead-gen Checkup: a site with one weak section gets graded by
+  // that section, not averaged into mediocrity. Honest because the
+  // weakest area really is the one that hurts the site's visitors.
+  const overallScore = checks.reduce(
+    (lowest, c) => Math.min(lowest, clampScore(c.score)),
+    100
   );
-  const overallScore = clampScore(weightedSum / totalWeight);
+  const overallGrade = gradeFromScore(overallScore);
 
   return {
     url: rawUrl,
@@ -57,8 +65,10 @@ export async function runCheckup(rawUrl: string): Promise<CheckupReport> {
     scannedAt: new Date().toISOString(),
     durationMs: Date.now() - start,
     overallScore,
-    overallGrade: gradeFromScore(overallScore),
+    overallGrade,
     overallStatus: statusFromScore(overallScore),
+    overallRemark: remarkForGrade(overallGrade),
+    overallVerdict: verdictForOverall(overallScore),
     checks,
   };
 }
