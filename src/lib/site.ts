@@ -32,7 +32,7 @@ export const site = {
     ],
     care: [
       { href: "/checkup", label: "Free Checkup" },
-      { href: "/book", label: "Book a Doctor" },
+      { href: "/book", label: "Contact us" },
       { href: "/login", label: "Sign in" },
       { href: "/status", label: "Service status" },
     ],

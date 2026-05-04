@@ -1,63 +1,73 @@
 import type { Metadata } from "next";
 import { Section } from "@/components/ui/section";
 import { Button } from "@/components/ui/button";
-import { Mail } from "lucide-react";
-import { site } from "@/lib/site";
+import { ContactForm } from "@/components/contact-form";
 
 export const metadata: Metadata = {
   openGraph: {
-    title: "Book a Doctor",
-    description: "Talk to one of our doctors. Diagnose your site, get a prescription, decide if we are a fit.",
+    title: "Contact us",
+    description:
+      "Tell us about your site. We'll be in touch within one business day.",
   },
   twitter: {
-    title: "Book a Doctor",
-    description: "Talk to one of our doctors. Diagnose your site, get a prescription, decide if we are a fit.",
+    title: "Contact us",
+    description:
+      "Tell us about your site. We'll be in touch within one business day.",
   },
-  title: "Book a Doctor",
+  title: "Contact us",
   description:
-    "Talk to one of our doctors. Free 30-minute call. No commitment.",
+    "Tell us about your site, what's working, and what isn't. We'll be in touch within one business day.",
 };
 
 export default function BookPage() {
   return (
     <Section size="lg">
-      <p className="font-mono text-xs uppercase tracking-[0.18em] text-accent">
-        Book a Doctor
-      </p>
-      <h1 className="mt-3 max-w-3xl text-balance text-4xl font-semibold tracking-tight md:text-6xl">
-        Talk to one of our doctors.
-      </h1>
-      <p className="mt-6 max-w-2xl text-lg text-muted">
-        30 minutes. We&apos;ll listen, ask questions, and tell you straight
-        whether we&apos;re a good fit. No commitment.
-      </p>
+      <div className="grid gap-12 lg:grid-cols-2 lg:gap-16">
+        {/* Left — pitch */}
+        <div>
+          <p className="font-mono text-xs uppercase tracking-[0.18em] text-accent">
+            Contact us
+          </p>
+          <h1 className="mt-3 text-balance text-4xl font-semibold tracking-tight md:text-5xl">
+            Talk to one of our doctors.
+          </h1>
+          <p className="mt-6 max-w-md text-lg text-muted">
+            Tell us about your site — what&apos;s working, what isn&apos;t,
+            what you&apos;re trying to fix. A doctor will reply within one
+            business day. No commitment.
+          </p>
 
-      <div className="mt-12 grid max-w-3xl gap-4 sm:grid-cols-2">
-        <Button
-          href={`mailto:${site.email}?subject=Book%20a%20Doctor`}
-          size="lg"
-          variant="primary"
-          className="w-full"
-        >
-          <Mail className="h-4 w-4" />
-          Email us
-        </Button>
-        <Button href="/checkup" size="lg" variant="secondary" className="w-full">
-          Run a free checkup first
-        </Button>
+          <div className="mt-10 max-w-md">
+            <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted">
+              Want a 60-second auto-diagnosis first?
+            </p>
+            <Button
+              href="/checkup"
+              size="md"
+              variant="secondary"
+              className="mt-3"
+            >
+              Run a free Checkup
+            </Button>
+          </div>
+
+          <p className="mt-10 text-xs text-muted">
+            Prefer email? Reach us at{" "}
+            <a
+              href="mailto:hello@thecodedoctors.com"
+              className="text-foreground underline decoration-border-strong underline-offset-4 hover:decoration-accent"
+            >
+              hello@thecodedoctors.com
+            </a>
+            .
+          </p>
+        </div>
+
+        {/* Right — form */}
+        <div>
+          <ContactForm />
+        </div>
       </div>
-
-      <p className="mt-6 text-sm text-muted">
-        Booking calendar opens in our next release. Until then, the fastest way
-        to reach us is{" "}
-        <a
-          href={`mailto:${site.email}`}
-          className="text-foreground underline decoration-border-strong underline-offset-4 hover:decoration-accent"
-        >
-          {site.email}
-        </a>
-        .
-      </p>
     </Section>
   );
 }

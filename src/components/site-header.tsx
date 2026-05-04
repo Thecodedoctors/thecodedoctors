@@ -43,7 +43,7 @@ export function SiteHeader() {
             Sign in
           </Link>
           <Button href="/book" size="sm">
-            Book a Doctor
+            Contact us
           </Button>
         </div>
       </div>
