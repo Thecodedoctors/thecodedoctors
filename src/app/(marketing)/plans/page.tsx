@@ -7,12 +7,12 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Treatment Plans",
     description:
-      "Three ways to work with us — a one-time deep audit, or ongoing care from $299/mo. Today's rates through year-end.",
+      "Three ways to work with us — a one-time deep audit, or ongoing care from $299/mo. Lock today's rate; new patients pay more from 2027.",
   },
   twitter: {
     title: "Treatment Plans",
     description:
-      "Three ways to work with us — a one-time deep audit, or ongoing care from $299/mo. Today's rates through year-end.",
+      "Three ways to work with us — a one-time deep audit, or ongoing care from $299/mo. Lock today's rate; new patients pay more from 2027.",
   },
   title: "Treatment Plans",
   description:
@@ -31,8 +31,8 @@ export default function PlansPage() {
         </h1>
         <p className="mt-6 max-w-2xl text-lg text-muted">
           One-time audit or ongoing care — no surprise hours, no contracts.
-          Today's rates apply through year-end; pricing adjusts upward in
-          January 2027.
+          Lock today's rate at signup. New patients onboarded from January
+          2027 pay more — you keep yours.
         </p>
       </Section>
       <PlansSection />

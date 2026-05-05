@@ -159,7 +159,7 @@ export default async function StartPage({
               ${priceCfg.anchor.toLocaleString()}
             </span>
             <span className="rounded-full bg-accent-soft px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.16em] text-accent ring-1 ring-inset ring-accent/30">
-              from 2027
+              new patients · 2027
             </span>
           </p>
           {!isOneTime && interval === "yearly" && (
