@@ -14,10 +14,12 @@ import { cn } from "@/lib/cn";
  *   - General Care      — $299/mo or $254/mo billed yearly ($3,049/yr, 15% off)
  *   - Premium Care      — $899/mo or $764/mo billed yearly ($9,170/yr, 15% off)
  *
- * Anchor framing is "Launch pricing — locked in for early patients" with the
- * future regular price shown crossed out. We do NOT show a fictitious "was"
- * price — the strikethrough is the *future* price, which is real and
- * legally defensible (FTC, EU Omnibus, UK CMA all prohibit fake markdowns).
+ * Anchor framing: the strikethrough is the FUTURE price ("from 2027"),
+ * not a fictitious past price. Today's rates apply through year-end and
+ * adjust upward in January 2027 — same urgency as a launch discount, but
+ * without the "we just launched" smell. Legally defensible (FTC, EU
+ * Omnibus, UK CMA all prohibit fake markdowns; future-price anchors are
+ * fine when the company commits to the increase).
  */
 
 type Interval = "monthly" | "yearly";
@@ -125,7 +127,7 @@ export function PlansSection() {
       <SectionHeader
         eyebrow="Treatment Plans"
         title="Pick a plan. Cancel anytime."
-        description="Launch pricing — locked in for our early patients. Goes up after launch."
+        description="Today's rates apply through year-end. Pricing adjusts upward in 2027."
       />
 
       <BillingToggle interval={interval} onChange={setInterval} />
@@ -176,7 +178,7 @@ export function PlansSection() {
                   ${cfg.anchor.toLocaleString()}
                 </span>
                 <span className="rounded-full bg-accent-soft px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.16em] text-accent ring-1 ring-inset ring-accent/30">
-                  Launch pricing
+                  from 2027
                 </span>
               </p>
               {yearlyHint && (
