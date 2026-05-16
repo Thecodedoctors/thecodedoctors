@@ -46,7 +46,12 @@ export async function getOrCreateMyReferralCode(): Promise<string> {
     .limit(1);
   if (rows[0]?.code) return rows[0].code;
 
-  // Generate + persist with retry on collision
+  // Generate + persist, retrying ONLY on a genuine unique-constraint
+  // collision (Postgres 23505 against user_referral_code_unique). Any
+  // other error (DB down, cold start) is NOT a collision — masking it
+  // as one wastes 5 retries against a dead DB and hides the real cause,
+  // so we rethrow immediately. The (portal) error boundary contains
+  // either outcome to a recoverable panel rather than the Critical page.
   for (let attempt = 0; attempt < 5; attempt++) {
     const code = generateCode();
     try {
@@ -56,6 +61,16 @@ export async function getOrCreateMyReferralCode(): Promise<string> {
         .where(eq(users.id, session.user.id));
       return code;
     } catch (err) {
+      const pgCode = (err as { code?: string })?.code;
+      const isCollision =
+        pgCode === "23505" ||
+        /unique|duplicate key/i.test(
+          err instanceof Error ? err.message : String(err)
+        );
+      if (!isCollision) {
+        console.error("[referrals] referral-code write failed", err);
+        throw err;
+      }
       console.error("[referrals] code collision, retrying", err);
     }
   }

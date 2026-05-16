@@ -8,6 +8,22 @@ import type { FleetSummary } from "@/server/health";
  * Renders nothing when the fleet is healthy. Lists up to 3 down sites
  * inline so a doctor can see the scope without leaving the page.
  */
+/** Patient-supplied site URLs aren't guaranteed to carry a scheme
+ *  (`updateClient` keeps a value it can't normalize). A bare
+ *  `new URL("example.com")` throws — which would take out the entire
+ *  staff home the moment any down site has a scheme-less URL. */
+function safeHost(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    try {
+      return new URL(`https://${url}`).hostname;
+    } catch {
+      return url;
+    }
+  }
+}
+
 export function FleetAlertStrip({ summary }: { summary: FleetSummary }) {
   if (summary.down === 0) return null;
 
@@ -48,7 +64,7 @@ export function FleetAlertStrip({ summary }: { summary: FleetSummary }) {
                   rel="noopener noreferrer external"
                   className="inline-flex items-center gap-1 font-mono text-xs text-muted underline decoration-border-strong underline-offset-4 hover:decoration-signal"
                 >
-                  {new URL(site.websiteUrl).hostname}
+                  {safeHost(site.websiteUrl)}
                   <ExternalLink className="h-3 w-3" />
                 </a>
               </li>

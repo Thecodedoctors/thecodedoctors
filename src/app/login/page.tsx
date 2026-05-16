@@ -108,7 +108,17 @@ async function loginAction(formData: FormData): Promise<void> {
       if (code === "RateLimited") back("RateLimited");
       back("Credentials");
     }
-    throw err;
+    // `back()`/`signIn()` success both throw a Next redirect — that
+    // MUST propagate untouched.
+    const digest = (err as { digest?: unknown })?.digest;
+    if (typeof digest === "string" && digest.startsWith("NEXT_REDIRECT")) {
+      throw err;
+    }
+    // Anything else (e.g. a cold-DB error thrown inside authorize())
+    // would otherwise hit the global Critical page on /login. Degrade
+    // to the generic "couldn't sign you in" banner instead.
+    console.error("[login] unexpected sign-in error", err);
+    back("Credentials");
   }
 }
 

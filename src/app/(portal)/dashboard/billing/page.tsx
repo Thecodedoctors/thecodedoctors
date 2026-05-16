@@ -196,6 +196,13 @@ function Banners({
           body="Use the upgrade buttons below to switch tiers — we won't bill you twice."
         />
       )}
+      {params.checkout === "failed" && (
+        <Banner
+          tone="warning"
+          title="Checkout couldn't start"
+          body="We couldn't reach our payment processor just now. No charge was made — please try again in a moment."
+        />
+      )}
       {params.upgrade === "success" && (
         <Banner
           tone="success"
@@ -261,6 +268,13 @@ function Banners({
       )}
       {params.card === "canceled" && (
         <Banner tone="muted" title="Add card canceled" body="Nothing changed." />
+      )}
+      {params.card === "failed" && (
+        <Banner
+          tone="warning"
+          title="Couldn't start card setup"
+          body="We couldn't reach our payment processor just now. Nothing changed — please try again in a moment."
+        />
       )}
       {params.card === "default-set" && (
         <Banner

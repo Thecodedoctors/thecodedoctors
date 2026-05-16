@@ -12,8 +12,17 @@
  * timestamp.
  */
 
-export function formatRelative(input: Date | string | number): string {
+/** Shared placeholder for null/undefined/Invalid timestamps. Returning
+ *  this instead of letting `new Date(undefined)` flow into
+ *  `.toLocaleDateString()` (which throws `RangeError: Invalid time
+ *  value`) keeps one bad/missing column from crashing a whole page. */
+const NO_DATE = "—";
+
+export function formatRelative(
+  input: Date | string | number | null | undefined
+): string {
   const d = toDate(input);
+  if (!isValidDate(d)) return NO_DATE;
   const diff = Date.now() - d.getTime();
   const sec = Math.floor(diff / 1000);
 
@@ -32,9 +41,11 @@ export function formatRelative(input: Date | string | number): string {
  * Same as formatRelative but appends "ago" for non-instant cases. Use this
  * when the bare unit reads as ambiguous (e.g. column headers).
  */
-export function formatRelativeAgo(input: Date | string | number): string {
+export function formatRelativeAgo(
+  input: Date | string | number | null | undefined
+): string {
   const r = formatRelative(input);
-  if (r === "just now") return r;
+  if (r === "just now" || r === NO_DATE) return r;
   if (/^\d+[mhd]$/.test(r)) return `${r} ago`;
   return r;
 }
@@ -42,16 +53,23 @@ export function formatRelativeAgo(input: Date | string | number): string {
 /**
  * Absolute timestamp for hover tooltips. ISO string (always serialisable).
  */
-export function formatAbsolute(input: Date | string | number): string {
-  return toDate(input).toISOString();
+export function formatAbsolute(
+  input: Date | string | number | null | undefined
+): string {
+  const d = toDate(input);
+  return isValidDate(d) ? d.toISOString() : NO_DATE;
 }
 
 /**
  * Localised long form for date-of-record displays (audit log, billing, etc).
  *   2026-05-01T08:23:00Z → "May 1, 2026 at 8:23 AM" (locale-respecting)
  */
-export function formatDateTime(input: Date | string | number): string {
-  return toDate(input).toLocaleString(undefined, {
+export function formatDateTime(
+  input: Date | string | number | null | undefined
+): string {
+  const d = toDate(input);
+  if (!isValidDate(d)) return NO_DATE;
+  return d.toLocaleString(undefined, {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -60,6 +78,12 @@ export function formatDateTime(input: Date | string | number): string {
   });
 }
 
-function toDate(input: Date | string | number): Date {
-  return input instanceof Date ? input : new Date(input);
+function toDate(input: Date | string | number | null | undefined): Date {
+  if (input instanceof Date) return input;
+  if (input === null || input === undefined) return new Date(NaN);
+  return new Date(input);
+}
+
+function isValidDate(d: Date): boolean {
+  return !Number.isNaN(d.getTime());
 }

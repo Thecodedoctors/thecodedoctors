@@ -33,54 +33,66 @@ export async function verifyEmailWithToken(
     return { ok: false, error: "Invalid verification link." };
   }
 
-  const rows = await db()
-    .select({
-      id: users.id,
-      sentAt: users.emailVerificationSentAt,
-      verifiedAt: users.emailVerified,
-    })
-    .from(users)
-    .where(eq(users.emailVerificationToken, token))
-    .limit(1);
-  const row = rows[0];
-  if (!row) {
+  // DB I/O wrapped: this runs in the /verify-email Server Component
+  // render path. An uncaught throw there (Neon cold start / blip)
+  // would hit the global Critical page for a paying customer who just
+  // clicked their verification email. Degrade to a retry message.
+  try {
+    const rows = await db()
+      .select({
+        id: users.id,
+        sentAt: users.emailVerificationSentAt,
+        verifiedAt: users.emailVerified,
+      })
+      .from(users)
+      .where(eq(users.emailVerificationToken, token))
+      .limit(1);
+    const row = rows[0];
+    if (!row) {
+      return {
+        ok: false,
+        error:
+          "This verification link doesn't match any account — it may have been replaced by a newer one.",
+      };
+    }
+    if (row.verifiedAt) {
+      return { ok: true };
+    }
+    if (
+      !row.sentAt ||
+      Date.now() - row.sentAt.getTime() > CODE_TTL_HOURS * 60 * 60 * 1000
+    ) {
+      return {
+        ok: false,
+        error:
+          "This verification link expired. Request a fresh one from your dashboard.",
+      };
+    }
+
+    await db()
+      .update(users)
+      .set({
+        emailVerified: new Date(),
+        emailVerificationCodeHash: null,
+        emailVerificationToken: null,
+        emailVerificationSentAt: null,
+        emailVerificationAttempts: 0,
+      })
+      .where(eq(users.id, row.id));
+
+    await recordAudit({
+      actorUserId: row.id,
+      action: "user.email_verified",
+      targetType: "user",
+      targetId: row.id,
+    });
+  } catch (err) {
+    console.error("[verify-email] token verification db error", err);
     return {
       ok: false,
-      error:
-        "This verification link doesn't match any account — it may have been replaced by a newer one.",
+      error: "We couldn't verify the link just now. Try again in a moment.",
     };
   }
-  if (row.verifiedAt) {
-    return { ok: true };
-  }
-  if (
-    !row.sentAt ||
-    Date.now() - row.sentAt.getTime() > CODE_TTL_HOURS * 60 * 60 * 1000
-  ) {
-    return {
-      ok: false,
-      error:
-        "This verification link expired. Request a fresh one from your dashboard.",
-    };
-  }
-
-  await db()
-    .update(users)
-    .set({
-      emailVerified: new Date(),
-      emailVerificationCodeHash: null,
-      emailVerificationToken: null,
-      emailVerificationSentAt: null,
-      emailVerificationAttempts: 0,
-    })
-    .where(eq(users.id, row.id));
-
-  await recordAudit({
-    actorUserId: row.id,
-    action: "user.email_verified",
-    targetType: "user",
-    targetId: row.id,
-  });
 
   // Intentionally no revalidatePath() here — calling it from this
   // module's render-path context tripped Next 16's response framing

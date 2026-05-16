@@ -1,7 +1,7 @@
 "use server";
 
 import { db, users, pendingSignups } from "@/db";
-import { eq } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { hashPassword } from "@/lib/password";
 import { encryptAutoSigninPassword } from "@/lib/auto-signin-crypto";
@@ -189,16 +189,29 @@ async function validateOnboardForm(
   if (businessName.length < 2)
     return { ok: false, error: "What should we call your business?" };
 
-  const existing = await db()
-    .select({ id: users.id })
-    .from(users)
-    .where(eq(users.email, email))
-    .limit(1);
-  if (existing.length > 0) {
+  // DB-touching checks wrapped so a cold-start / transient Neon error
+  // returns a friendly banner instead of bubbling to the Critical page
+  // on /start or /trial (no error.tsx covers a thrown server action).
+  let referredByCode: string | null;
+  try {
+    const existing = await db()
+      .select({ id: users.id })
+      .from(users)
+      .where(sql`lower(${users.email}) = ${email}`)
+      .limit(1);
+    if (existing.length > 0) {
+      return {
+        ok: false,
+        error:
+          "An account with that email already exists. Sign in instead, or use a different email.",
+      };
+    }
+    referredByCode = await resolveReferralCode(ref);
+  } catch (err) {
+    console.error("[onboard] validate form db check failed", err);
     return {
       ok: false,
-      error:
-        "An account with that email already exists. Sign in instead, or use a different email.",
+      error: "Something went wrong on our end. Try again in a moment.",
     };
   }
 
@@ -210,7 +223,7 @@ async function validateOnboardForm(
       password,
       businessName: businessName.slice(0, 200),
       websiteUrl: normalizedUrl,
-      referredByCode: await resolveReferralCode(ref),
+      referredByCode,
     },
   };
 }
@@ -276,30 +289,45 @@ async function startSubscriptionCheckout(args: {
     };
   }
 
-  const checkout = await stripe.checkout.sessions.create({
-    mode: "subscription",
-    customer_email: args.email,
-    line_items: [{ price: priceId, quantity: 1 }],
-    success_url: `${site.url}/welcome?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${site.url}/start?canceled=1`,
-    allow_promotion_codes: true,
-    billing_address_collection: "auto",
-    subscription_data: {
+  let checkout: Awaited<
+    ReturnType<typeof stripe.checkout.sessions.create>
+  >;
+  try {
+    checkout = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      customer_email: args.email,
+      line_items: [{ price: priceId, quantity: 1 }],
+      success_url: `${site.url}/welcome?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${site.url}/start?canceled=1`,
+      allow_promotion_codes: true,
+      billing_address_collection: "auto",
+      subscription_data: {
+        metadata: {
+          pendingSignupToken: args.pendingSignupToken,
+          plan: args.plan,
+          interval: args.interval,
+        },
+        ...(args.trialPeriodDays
+          ? { trial_period_days: args.trialPeriodDays }
+          : {}),
+      },
       metadata: {
         pendingSignupToken: args.pendingSignupToken,
         plan: args.plan,
         interval: args.interval,
       },
-      ...(args.trialPeriodDays
-        ? { trial_period_days: args.trialPeriodDays }
-        : {}),
-    },
-    metadata: {
-      pendingSignupToken: args.pendingSignupToken,
-      plan: args.plan,
-      interval: args.interval,
-    },
-  });
+    });
+  } catch (err) {
+    // Stripe threw (bad/mismatched price id, restricted key, account
+    // not live-activated, network blip). Return a banner instead of
+    // letting it bubble to the global Critical page. The pending_signup
+    // row is harmless — it expires in 24h and finalize is idempotent.
+    console.error("[onboard] stripe subscription checkout failed", err);
+    return {
+      ok: false,
+      error: "Sign-ups are temporarily unavailable. Please try again in a moment.",
+    };
+  }
 
   if (!checkout.url) {
     return {
@@ -326,28 +354,43 @@ async function startCheckupCheckout(args: {
   // `payment` mode = one-time charge, no subscription. Stripe still
   // creates a Customer record for us so future upgrades to ongoing care
   // can reuse the saved card.
-  const checkout = await stripe.checkout.sessions.create({
-    mode: "payment",
-    customer_email: args.email,
-    line_items: [{ price: priceId, quantity: 1 }],
-    success_url: `${site.url}/welcome?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${site.url}/start?plan=checkup&canceled=1`,
-    allow_promotion_codes: true,
-    billing_address_collection: "auto",
-    // Save the customer + payment intent so we can issue refunds later
-    // (the money-back guarantee on Checkup) without manual lookup.
-    customer_creation: "always",
-    payment_intent_data: {
+  let checkout: Awaited<
+    ReturnType<typeof stripe.checkout.sessions.create>
+  >;
+  try {
+    // `payment` mode = one-time charge, no subscription. Stripe still
+    // creates a Customer record for us so future upgrades to ongoing
+    // care can reuse the saved card.
+    checkout = await stripe.checkout.sessions.create({
+      mode: "payment",
+      customer_email: args.email,
+      line_items: [{ price: priceId, quantity: 1 }],
+      success_url: `${site.url}/welcome?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${site.url}/start?plan=checkup&canceled=1`,
+      allow_promotion_codes: true,
+      billing_address_collection: "auto",
+      // Save the customer + payment intent so we can issue refunds
+      // later (the money-back guarantee on Checkup) without manual
+      // lookup.
+      customer_creation: "always",
+      payment_intent_data: {
+        metadata: {
+          pendingSignupToken: args.pendingSignupToken,
+          plan: "checkup",
+        },
+      },
       metadata: {
         pendingSignupToken: args.pendingSignupToken,
         plan: "checkup",
       },
-    },
-    metadata: {
-      pendingSignupToken: args.pendingSignupToken,
-      plan: "checkup",
-    },
-  });
+    });
+  } catch (err) {
+    console.error("[onboard] stripe checkup checkout failed", err);
+    return {
+      ok: false,
+      error: "Checkup purchases are temporarily unavailable. Try again shortly.",
+    };
+  }
 
   if (!checkout.url) {
     return {

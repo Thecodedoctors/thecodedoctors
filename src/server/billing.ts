@@ -128,57 +128,71 @@ export async function startCheckoutForCurrentUser(
     redirect(portalActionRedirect("/dashboard/billing?checkout=already-subscribed"));
   }
 
-  // Reuse the existing Stripe customer if we already created one for this
-  // client; otherwise create a new one tied to our internal client_id.
-  let customerId = client.stripeCustomerId;
-  if (!customerId) {
-    const customer = await stripe.customers.create({
-      email: session.user.email ?? undefined,
-      name: client.name,
-      metadata: { clientId: client.id, userId: session.user.id },
+  // All Stripe I/O below is wrapped so a declined-by-Stripe / network
+  // / config error returns the user to billing with a banner instead
+  // of crashing to the portal error page. The success path redirect()
+  // stays OUTSIDE the try (its NEXT_REDIRECT must propagate).
+  let checkoutSession: Awaited<
+    ReturnType<typeof stripe.checkout.sessions.create>
+  >;
+  try {
+    // Reuse the existing Stripe customer if we already created one for
+    // this client; otherwise create a new one tied to our client_id.
+    let customerId = client.stripeCustomerId;
+    if (!customerId) {
+      const customer = await stripe.customers.create({
+        email: session.user.email ?? undefined,
+        name: client.name,
+        metadata: { clientId: client.id, userId: session.user.id },
+      });
+      customerId = customer.id;
+      await db()
+        .update(clients)
+        .set({ stripeCustomerId: customerId })
+        .where(eq(clients.id, client.id));
+    }
+
+    // Checkup → Care: if this client originally bought the $599
+    // Checkup and is now subscribing to recurring care, give them 60
+    // days free on the new subscription. The Checkup payment
+    // effectively covers their first 2 months of ongoing care.
+    //
+    // Trial-based instead of coupon-based because Stripe Checkout
+    // shows "$0 due today, then $299/mo from {date}" cleanly in its
+    // UI — no confused "$299 due" / "$0 charged" gap.
+    //
+    // For Premium ($899/mo), 60 days = ~$1798 of value vs the $599
+    // they paid — generous, but a deliberate launch nurture choice.
+    const isCheckupConversion = client.plan === "checkup";
+
+    checkoutSession = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      customer: customerId,
+      line_items: [{ price: priceId, quantity: 1 }],
+      success_url: `${site.url}/dashboard/billing?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${site.url}/dashboard/billing?checkout=canceled`,
+      allow_promotion_codes: true,
+      billing_address_collection: "auto",
+      subscription_data: {
+        metadata: { clientId: client.id, plan, interval },
+        ...(isCheckupConversion && { trial_period_days: 60 }),
+      },
+      metadata: {
+        clientId: client.id,
+        plan,
+        interval,
+        checkup_conversion: isCheckupConversion ? "true" : "false",
+      },
     });
-    customerId = customer.id;
-    await db()
-      .update(clients)
-      .set({ stripeCustomerId: customerId })
-      .where(eq(clients.id, client.id));
-  }
-
-  // Checkup → Care: if this client originally bought the $599 Checkup
-  // and is now subscribing to recurring care, give them 60 days free
-  // on the new subscription. The Checkup payment effectively covers
-  // their first 2 months of ongoing care.
-  //
-  // Trial-based instead of coupon-based because Stripe Checkout shows
-  // "$0 due today, then $299/mo from {date}" cleanly in its UI — no
-  // confused "$299 due" / "$0 charged" gap. Stripe also does the work
-  // of scheduling the first billing date for us.
-  //
-  // For Premium ($899/mo), 60 days = ~$1798 of value vs the $599
-  // they paid — generous, but a deliberate choice: the 2-month free
-  // window is a nurture period that converts higher-tier intent at
-  // launch. Re-evaluate after we have data.
-  const isCheckupConversion = client.plan === "checkup";
-
-  const checkoutSession = await stripe.checkout.sessions.create({
-    mode: "subscription",
-    customer: customerId,
-    line_items: [{ price: priceId, quantity: 1 }],
-    success_url: `${site.url}/dashboard/billing?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${site.url}/dashboard/billing?checkout=canceled`,
-    allow_promotion_codes: true,
-    billing_address_collection: "auto",
-    subscription_data: {
-      metadata: { clientId: client.id, plan, interval },
-      ...(isCheckupConversion && { trial_period_days: 60 }),
-    },
-    metadata: {
+  } catch (err) {
+    console.error("[billing.checkout] Stripe checkout start failed", {
       clientId: client.id,
       plan,
       interval,
-      checkup_conversion: isCheckupConversion ? "true" : "false",
-    },
-  });
+      err,
+    });
+    redirect(portalActionRedirect("/dashboard/billing?checkout=failed"));
+  }
 
   await recordAudit({
     actorUserId: session.user.id,
@@ -189,7 +203,7 @@ export async function startCheckoutForCurrentUser(
   });
 
   if (!checkoutSession.url) {
-    throw new Error("Stripe didn't return a checkout URL.");
+    redirect(portalActionRedirect("/dashboard/billing?checkout=failed"));
   }
   redirect(checkoutSession.url);
 }
@@ -555,28 +569,40 @@ export async function startAddCardCheckoutForCurrentUser(): Promise<void> {
     email: session.user.email,
   });
 
-  // Lazily create the Stripe customer if missing — mirrors subscribe path.
-  let customerId = client.stripeCustomerId;
-  if (!customerId) {
-    const customer = await stripe.customers.create({
-      email: session.user.email ?? undefined,
-      name: client.name,
-      metadata: { clientId: client.id, userId: session.user.id },
-    });
-    customerId = customer.id;
-    await db()
-      .update(clients)
-      .set({ stripeCustomerId: customerId })
-      .where(eq(clients.id, client.id));
-  }
+  // Stripe I/O wrapped → banner on failure, not the portal error page.
+  let checkoutSession: Awaited<
+    ReturnType<typeof stripe.checkout.sessions.create>
+  >;
+  try {
+    // Lazily create the Stripe customer if missing — mirrors subscribe.
+    let customerId = client.stripeCustomerId;
+    if (!customerId) {
+      const customer = await stripe.customers.create({
+        email: session.user.email ?? undefined,
+        name: client.name,
+        metadata: { clientId: client.id, userId: session.user.id },
+      });
+      customerId = customer.id;
+      await db()
+        .update(clients)
+        .set({ stripeCustomerId: customerId })
+        .where(eq(clients.id, client.id));
+    }
 
-  const checkoutSession = await stripe.checkout.sessions.create({
-    mode: "setup",
-    customer: customerId,
-    success_url: `${site.url}/dashboard/billing?card=added`,
-    cancel_url: `${site.url}/dashboard/billing?card=canceled`,
-    payment_method_types: ["card"],
-  });
+    checkoutSession = await stripe.checkout.sessions.create({
+      mode: "setup",
+      customer: customerId,
+      success_url: `${site.url}/dashboard/billing?card=added`,
+      cancel_url: `${site.url}/dashboard/billing?card=canceled`,
+      payment_method_types: ["card"],
+    });
+  } catch (err) {
+    console.error("[billing.add_card] Stripe setup checkout failed", {
+      clientId: client.id,
+      err,
+    });
+    redirect(portalActionRedirect("/dashboard/billing?card=failed"));
+  }
 
   await recordAudit({
     actorUserId: session.user.id,
@@ -586,7 +612,7 @@ export async function startAddCardCheckoutForCurrentUser(): Promise<void> {
   });
 
   if (!checkoutSession.url) {
-    throw new Error("Stripe didn't return a checkout URL.");
+    redirect(portalActionRedirect("/dashboard/billing?card=failed"));
   }
   redirect(checkoutSession.url);
 }

@@ -28,6 +28,25 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { TurnstileGate } from "@/components/turnstile-gate";
 
+/**
+ * Hostname for display. `report.finalUrl` is normally a well-formed
+ * absolute URL from the fetcher, but it's influenced by third-party
+ * redirect `Location` headers — a malformed value would make a bare
+ * `new URL()` throw during render and crash the results screen at the
+ * peak conversion moment. Fall back to the raw string / original url.
+ */
+function safeHostname(value: string, fallback: string): string {
+  try {
+    return new URL(value).hostname;
+  } catch {
+    try {
+      return new URL(fallback).hostname;
+    } catch {
+      return fallback || value || "your site";
+    }
+  }
+}
+
 const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   transport: Globe,
   "security-headers": ShieldCheck,
@@ -110,7 +129,7 @@ function OverallCard({ report }: { report: CheckupReport }) {
             Overall diagnosis
           </p>
           <h2 className="mt-2 text-balance text-2xl font-semibold tracking-tight md:text-3xl">
-            {new URL(report.finalUrl).hostname}
+            {safeHostname(report.finalUrl, report.url)}
           </h2>
           <p className="mt-3 text-sm text-muted">{report.overallVerdict}</p>
         </div>
