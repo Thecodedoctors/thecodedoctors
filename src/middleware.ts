@@ -22,6 +22,7 @@ import { NextResponse, type NextRequest } from "next/server";
  */
 
 const APEX = "thecodedoctors.com";
+const WWW = "www.thecodedoctors.com";
 const APP_SUB = "app.thecodedoctors.com";
 const ADMIN_SUB = "admin.thecodedoctors.com";
 
@@ -62,6 +63,16 @@ export function middleware(request: NextRequest) {
   const url = request.nextUrl.clone();
   const rawHost = request.headers.get("host") ?? "";
   const host = rawHost.toLowerCase().split(":")[0];
+
+  // Canonicalize www → apex (301). Runs before pass-through so EVERY
+  // www request — pages and assets — collapses to the apex host,
+  // avoiding duplicate-content SEO split and auth-cookie domain
+  // confusion. Path + query are preserved.
+  if (host === WWW) {
+    url.protocol = "https:";
+    url.host = APEX;
+    return NextResponse.redirect(url, 301);
+  }
 
   // Forward the post-rewrite pathname to layouts via a header so the
   // 2FA enforcement gate can know whether to skip the redirect for

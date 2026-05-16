@@ -92,7 +92,9 @@ export const users = pgTable("user", {
   role: userRole("role").notNull().default("client"),
   passwordHash: text("password_hash"),
   /** Short shareable code for /dashboard/referrals. Generated on first
-   *  view. Unique when set (partial unique index in the live DB). */
+   *  view. Unique when set — enforced by `user_referral_code_unique`
+   *  below (Postgres unique indexes allow multiple NULLs, so this is
+   *  effectively a partial unique on non-null codes). */
   referralCode: text("referral_code"),
   totpSecret: text("totp_secret"), // encrypted at the app layer
   totpEnabled: boolean("totp_enabled").notNull().default(false),
@@ -123,7 +125,15 @@ export const users = pgTable("user", {
   deletedAt: timestamp("deleted_at", { mode: "date" }),
   deletionReason: text("deletion_reason"),
   createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
-});
+}, (t) => [
+  // Unique when set. Postgres treats NULLs as distinct, so unset
+  // referral codes don't collide — the retry loop in referrals.ts
+  // now actually gets a constraint to trip on.
+  uniqueIndex("user_referral_code_unique").on(t.referralCode),
+  // Case-insensitive email uniqueness. Stops mixed-case duplicate
+  // accounts and backs the `lower(email)` login lookup in auth.ts.
+  uniqueIndex("user_email_lower_unique").on(sql`lower(${t.email})`),
+]);
 
 export const accounts = pgTable(
   "account",
@@ -217,7 +227,16 @@ export const clients = pgTable(
     createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { mode: "date" }).notNull().defaultNow(),
   },
-  (t) => [index("client_status_idx").on(t.status)]
+  (t) => [
+    index("client_status_idx").on(t.status),
+    // One client per Stripe subscription. Prevents the webhook's
+    // fallback lookup from resolving (and then mutating) the wrong
+    // client when a subscription id is duplicated across rows.
+    // NULLs are distinct in Postgres → pre-subscription clients are fine.
+    uniqueIndex("client_stripe_subscription_unique").on(
+      t.stripeSubscriptionId
+    ),
+  ]
 );
 
 /** Many-to-many: which users are members of which client (team accounts). */

@@ -277,6 +277,14 @@ export async function upgradeSubscriptionForCurrentUser(
   // billing cycle. Without this the customer "upgrades" but isn't
   // charged until next month — which looks like a free upgrade and
   // creates support work down the road.
+  //
+  // payment_behavior: "error_if_incomplete" makes Stripe THROW if that
+  // immediate prorated invoice can't be collected synchronously (card
+  // declined / authentication required). Without it the subscription
+  // item swap "succeeds" while the invoice goes unpaid — the customer
+  // rides the higher tier for free. The throw routes into the catch
+  // below → the user gets the "upgrade failed" banner and stays on
+  // their current (paid) plan.
   let updatedId: string;
   try {
     const updated = await stripe.subscriptions.update(
@@ -284,6 +292,7 @@ export async function upgradeSubscriptionForCurrentUser(
       {
         items: [{ id: currentItemId, price: newPriceId }],
         proration_behavior: "always_invoice",
+        payment_behavior: "error_if_incomplete",
         metadata: { clientId: client.id, plan, interval },
       }
     );

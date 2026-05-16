@@ -9,7 +9,11 @@
  * `project_auth_credentials_interim.md`.
  */
 
-const ITERATIONS = 100_000;
+// OWASP-recommended minimum for PBKDF2-HMAC-SHA256 (2023+). Old hashes
+// stored at a lower count still verify — `verifyPassword` reads the
+// iteration count out of the stored string, so this only affects newly
+// created/changed passwords. They transparently upgrade on next set.
+const ITERATIONS = 600_000;
 const KEY_BYTES = 32;
 const SALT_BYTES = 16;
 

@@ -45,7 +45,7 @@ export default async function TrialPage({
             Let&apos;s get your site healthy.
           </h1>
           <p className="mt-5 max-w-md text-base text-muted">
-            Two weeks of General Care on us. We diagnose what your scan
+            Seven days of General Care on us. We diagnose what your scan
             flagged, prescribe a treatment plan, and start work the same
             day. Cancel anytime in those 7 days — no charge.
           </p>

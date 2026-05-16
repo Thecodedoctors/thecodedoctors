@@ -3,7 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Mail, Lock, ArrowRight, KeyRound } from "lucide-react";
 import { AuthError } from "next-auth";
-import { eq } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { signIn, auth } from "@/auth";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/logo";
@@ -17,6 +17,27 @@ export const metadata: Metadata = {
 };
 
 /**
+ * Sanitize the post-login `next` target. Open-redirect guard: only a
+ * same-origin absolute path is allowed. Rejects protocol-relative
+ * (`//evil.com`), backslash tricks (`/\evil.com`), scheme URLs
+ * (these never start with `/`), and CRLF/control chars. Anything
+ * suspicious falls back to the dashboard.
+ */
+function sanitizeNext(raw: unknown): string {
+  const fallback = "/dashboard";
+  if (typeof raw !== "string" || raw.length === 0) return fallback;
+  if (raw[0] !== "/") return fallback;
+  if (raw[1] === "/" || raw[1] === "\\") return fallback;
+  if (Array.from(raw).some((ch) => {
+    const c = ch.charCodeAt(0);
+    return c < 0x20 || c === 0x7f;
+  })) {
+    return fallback;
+  }
+  return raw;
+}
+
+/**
  * Top-level Server Action — must NOT close over outer scope.
  * Cloudflare Workers can fail to reconstruct closures, surfacing as a 404
  * "Server action not found" when the form is submitted. Reads `next` from
@@ -27,7 +48,7 @@ async function loginAction(formData: FormData): Promise<void> {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
   const totpCode = String(formData.get("totpCode") ?? "").trim();
-  const next = String(formData.get("next") ?? "/dashboard") || "/dashboard";
+  const next = sanitizeNext(formData.get("next"));
 
   const back = (err: string, opts: { keepEmail?: boolean } = {}) =>
     redirect(
@@ -56,7 +77,7 @@ async function loginAction(formData: FormData): Promise<void> {
           deletedAt: users.deletedAt,
         })
         .from(users)
-        .where(eq(users.email, email))
+        .where(sql`lower(${users.email}) = ${email}`)
         .limit(1);
       const u = rows[0];
       if (u?.deletedAt) back("Deleted");
@@ -105,7 +126,7 @@ export default async function LoginPage({
 }) {
   const session = await auth();
   const params = await searchParams;
-  const next = params.next ?? "/dashboard";
+  const next = sanitizeNext(params.next);
 
   if (session?.user) {
     const target =

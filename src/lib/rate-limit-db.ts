@@ -27,6 +27,7 @@ export async function checkRateLimit({
   bucket,
   limit,
   windowSeconds,
+  failClosed = false,
 }: {
   /** What kind of action — `login`, `checkup`, `lead`, etc. */
   scope: string;
@@ -36,6 +37,13 @@ export async function checkRateLimit({
   limit: number;
   /** Window length in seconds. */
   windowSeconds: number;
+  /**
+   * When the counter store errors: `false` (default) fails OPEN — lets
+   * the request through so a DB blip doesn't break the whole surface.
+   * `true` fails CLOSED — denies the request. Use for credential /
+   * 2FA paths where a DB outage must NOT lift brute-force protection.
+   */
+  failClosed?: boolean;
 }): Promise<RateLimitResult> {
   const now = Date.now();
   const windowStart = Math.floor(now / 1000 / windowSeconds) * windowSeconds;
@@ -65,9 +73,15 @@ export async function checkRateLimit({
       .returning({ count: rateLimitCounters.count });
     count = rows[0]?.count ?? 1;
   } catch (err) {
-    // If the rate-limit table doesn't exist yet (migration pending)
-    // or the DB is transiently down, fail OPEN — better to let a
-    // request through than to break the whole login surface.
+    // Counter store errored (table missing / DB transiently down).
+    if (failClosed) {
+      // Credential/2FA path — deny rather than lift protection.
+      console.error("[rate-limit] check failed; failing CLOSED", err);
+      const retryAfter = Math.ceil((expiresAt.getTime() - now) / 1000);
+      return { ok: false, retryAfter, resetAt: expiresAt };
+    }
+    // Non-sensitive path — fail OPEN so a DB blip doesn't break the
+    // whole surface.
     console.error("[rate-limit] check failed; failing open", err);
     return {
       ok: true,

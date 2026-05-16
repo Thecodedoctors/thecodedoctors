@@ -216,6 +216,28 @@ async function onSubscriptionChange(sub: Stripe.Subscription) {
     }
     clientId = existing[0].id;
   }
+
+  // Ownership assertion: the resolved client's Stripe customer must
+  // match the subscription's customer. Guards against a stale/forged
+  // metadata.clientId mutating a different client's billing state. Skip
+  // only when the client has no customer yet (brand-new signup whose
+  // customer id is written by finalize after this event).
+  const subCustomerId =
+    typeof sub.customer === "string" ? sub.customer : sub.customer?.id ?? null;
+  const owner = await db()
+    .select({ stripeCustomerId: clients.stripeCustomerId })
+    .from(clients)
+    .where(eq(clients.id, clientId))
+    .limit(1);
+  const ownerCustomer = owner[0]?.stripeCustomerId ?? null;
+  if (ownerCustomer && subCustomerId && ownerCustomer !== subCustomerId) {
+    console.error(
+      "[stripe-webhook] subscription/customer ownership mismatch — refusing",
+      { clientId, expected: ownerCustomer, got: subCustomerId, sub: sub.id }
+    );
+    return;
+  }
+
   await applySubscriptionUpdate(clientId, sub, item, periodEndUnix, subType);
 }
 

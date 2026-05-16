@@ -1,7 +1,8 @@
 "use server";
 
 import { db, users } from "@/db";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import { checkRateLimit } from "@/lib/rate-limit-db";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import QRCode from "qrcode";
@@ -362,6 +363,19 @@ export async function verifyTotpForLogin(
   const cleaned = rawCode.replace(/\s+/g, "").toUpperCase();
   if (!cleaned) return false;
 
+  // Brute-force guard on the 2FA step itself. The password-step rate
+  // limit in auth.ts is consumed by the password attempt; without this
+  // a holder of a valid password gets unbounded TOTP/recovery guesses.
+  // Keyed on userId, fails CLOSED (deny if the counter store errors).
+  const rl = await checkRateLimit({
+    scope: "totp_login",
+    bucket: userId,
+    limit: 5,
+    windowSeconds: 900,
+    failClosed: true,
+  });
+  if (!rl.ok) return false;
+
   const rows = await db()
     .select({
       totpSecret: users.totpSecret,
@@ -380,9 +394,10 @@ export async function verifyTotpForLogin(
 
   // Recovery code path. Stored as `[hash, hash, …]` JSON.
   if (!me.totpRecoveryCodes) return false;
+  const original = me.totpRecoveryCodes;
   let hashes: string[];
   try {
-    hashes = JSON.parse(me.totpRecoveryCodes) as string[];
+    hashes = JSON.parse(original) as string[];
   } catch {
     return false;
   }
@@ -391,11 +406,21 @@ export async function verifyTotpForLogin(
     if (await verifyPassword(candidate, hashes[i])) {
       // Consume — remove this hash so the code can't be reused.
       hashes.splice(i, 1);
-      await db()
+      // Atomic compare-and-set: only write if the stored array is still
+      // exactly what we read. Two concurrent logins with the same
+      // recovery code race here — the loser's WHERE matches 0 rows, so
+      // it does NOT get a free pass (double-spend prevented).
+      const updated = await db()
         .update(users)
         .set({ totpRecoveryCodes: JSON.stringify(hashes) })
-        .where(eq(users.id, userId));
-      return true;
+        .where(
+          and(
+            eq(users.id, userId),
+            eq(users.totpRecoveryCodes, original)
+          )
+        )
+        .returning({ id: users.id });
+      return updated.length > 0;
     }
   }
   return false;

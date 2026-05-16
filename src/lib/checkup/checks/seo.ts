@@ -29,11 +29,21 @@ function extractFirstAttr(html: string, tag: string, attr: string): string | und
   return html.match(re)?.[1];
 }
 
+/**
+ * Hard cap on the HTML fed to regex parsing. The meta/attr regexes use
+ * alternation + backtracking and run on attacker-served bodies; a
+ * crafted multi-hundred-KB page of attribute-like noise can drive
+ * catastrophic backtracking and pin the Worker CPU (cheap DoS on an
+ * unauthenticated endpoint). 256 KB is far past where real <head>
+ * metadata lives, so SEO scoring is unaffected in practice.
+ */
+const MAX_HTML_FOR_REGEX = 256 * 1024;
+
 export async function checkSeo(page: FetchedPage): Promise<CheckResult> {
   const start = Date.now();
   const findings: Finding[] = [];
   let score = 100;
-  const html = page.bodyText;
+  const html = page.bodyText.slice(0, MAX_HTML_FOR_REGEX);
 
   const title = extractTitle(html);
   if (!title) {

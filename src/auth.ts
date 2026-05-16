@@ -3,7 +3,7 @@ import NextAuth, {
   CredentialsSignin,
 } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db, isDbConfigured, users } from "@/db";
 import { verifyPassword } from "@/lib/password";
 import { verifyTotpForLogin } from "@/server/two-factor";
@@ -111,13 +111,16 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         // attacker would target). Email-bucket at 10/15min matches
         // SECURITY-POSTURE.md; we also IP-bucket at 50/15min so a
         // distributed credential-stuffing campaign across emails still
-        // gets throttled. Fails open if the DB is down.
+        // gets throttled. FAILS CLOSED — if the rate-limit DB errors we
+        // deny rather than allow, so a DB outage can't be used to lift
+        // brute-force protection on the credential surface.
         const ip = clientIpFromRequest(request);
         const emailLimit = await checkRateLimit({
           scope: "login",
           bucket: email,
           limit: 10,
           windowSeconds: 900,
+          failClosed: true,
         });
         if (!emailLimit.ok) throw new RateLimitedError();
         if (ip) {
@@ -126,16 +129,20 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             bucket: ip,
             limit: 50,
             windowSeconds: 900,
+            failClosed: true,
           });
           if (!ipLimit.ok) throw new RateLimitedError();
         }
 
         // Sign-in only — accounts are created via /trial or /start
         // (commitment-driven onboarding). Login does NOT auto-create.
+        // Case-insensitive match: `email` is already lowercased above,
+        // and a `lower(email)` unique index backs this (see schema).
+        // Prevents lockouts/dupes from mixed-case stored addresses.
         const rows = await db()
           .select()
           .from(users)
-          .where(eq(users.email, email))
+          .where(sql`lower(${users.email}) = ${email}`)
           .limit(1);
         if (rows.length === 0) return null;
 

@@ -2,8 +2,12 @@
  * Cloudflare Turnstile server-side verification.
  *
  * Returns { ok: true } when:
- *   - Turnstile is not configured (missing TURNSTILE_SECRET_KEY) → no-op pass
  *   - Token is present and validates against Cloudflare's siteverify endpoint
+ *   - (NON-production only) Turnstile is not configured — dev convenience
+ *
+ * In production a missing TURNSTILE_SECRET_KEY FAILS CLOSED: every
+ * protected endpoint (scanner, lead, contact, etc.) is denied rather
+ * than silently dropping bot protection on a misconfigured deploy.
  *
  * Returns { ok: false, reason } otherwise.
  */
@@ -15,7 +19,15 @@ export async function verifyTurnstile(
 ): Promise<TurnstileResult> {
   const secret = process.env.TURNSTILE_SECRET_KEY;
   if (!secret) {
-    // Not configured — pass through. Production deploys MUST set this.
+    if (process.env.NODE_ENV === "production") {
+      // Misconfigured production deploy — deny, don't silently disable
+      // bot protection on every public endpoint.
+      console.error(
+        "[turnstile] TURNSTILE_SECRET_KEY unset in production — failing closed"
+      );
+      return { ok: false, reason: "captcha-misconfigured" };
+    }
+    // Non-production only: pass through for local dev convenience.
     return { ok: true };
   }
 
