@@ -9,6 +9,8 @@ import {
   membersOfClient,
 } from "@/server/notifications";
 import { finalizePendingSignupBySessionId } from "@/server/onboard-finalize";
+import { sendBrandEmail } from "@/lib/email";
+import { site } from "@/lib/site";
 
 /**
  * Stripe webhook — single endpoint that handles every subscription /
@@ -513,76 +515,82 @@ async function clientByCustomer(
   return row ?? null;
 }
 
-/** Mark a client payment-failed (gate revokes after grace) + zero MRR.
- *  Used by refund / dispute / pause — money came back or stopped. */
-async function flagBillingProblem(
-  clientId: string,
-  reason: string,
-  detail: Record<string, unknown>
-) {
-  await db()
-    .update(clients)
-    .set({ paymentFailedAt: new Date(), mrrCents: 0, updatedAt: new Date() })
-    .where(eq(clients.id, clientId));
-  await recordAudit({
-    actorUserId: null,
-    action: reason,
-    targetType: "client",
-    targetId: clientId,
-    after: detail,
-  });
-  const recipients = await membersOfClient(clientId);
-  await dispatchEvent({
-    recipients,
-    eventKey: "billing.payment_failed",
-    title: "There's a problem with your billing",
-    body: "Please check your billing settings or contact us so care isn't interrupted.",
-    href: "/billing",
-    targetType: "client",
-    targetId: clientId,
-  });
+/**
+ * Email the practice inbox. Refunds, pauses and disputes are handled
+ * MANUALLY by the founder (policy: the customer emails first) — the
+ * webhook never auto-revokes or changes plan/MRR for these. It only
+ * leaves an audit trail, and for disputes (which can arrive with no
+ * prior email) it also pings the inbox so nothing is missed. Best
+ * effort: a send failure must not 500 the webhook (→ Stripe retry
+ * storm); the audit row is the durable record.
+ */
+async function alertFounder(subject: string, html: string): Promise<void> {
+  try {
+    await sendBrandEmail({ to: site.emails.general, subject, html });
+  } catch (err) {
+    console.error("[stripe-webhook] founder alert email failed", err);
+  }
 }
 
 async function onChargeRefunded(charge: Stripe.Charge) {
-  // Only act on a FULL refund — partial refunds (goodwill credits)
-  // shouldn't revoke access.
-  const fullyRefunded =
-    charge.refunded === true ||
-    (typeof charge.amount === "number" &&
-      typeof charge.amount_refunded === "number" &&
-      charge.amount_refunded >= charge.amount &&
-      charge.amount > 0);
-  if (!fullyRefunded) return;
+  // The founder issues refunds manually after the customer emails —
+  // they already know. Record it for traceability; do NOT change
+  // client state (no revoke, no MRR change, no customer email).
   const client = await clientByCustomer(charge.customer);
   if (!client) return;
-  await flagBillingProblem(client.id, "billing.charge_refunded", {
-    chargeId: charge.id,
-    amountRefunded: charge.amount_refunded,
+  await recordAudit({
+    actorUserId: null,
+    action: "billing.charge_refunded",
+    targetType: "client",
+    targetId: client.id,
+    after: {
+      chargeId: charge.id,
+      amount: charge.amount,
+      amountRefunded: charge.amount_refunded,
+      fullyRefunded: charge.refunded === true,
+    },
   });
 }
 
 async function onDisputeCreated(dispute: Stripe.Dispute) {
-  // A dispute means the money is being clawed back — revoke until it's
-  // resolved rather than keep delivering a paid service for free.
+  // A dispute can land with no email to us. Per policy we still don't
+  // auto-revoke — but we DO alert the founder so it's handled
+  // manually and promptly. Audit trail + inbox ping, no state change.
   const charge =
-    typeof dispute.charge === "string" ? null : dispute.charge ?? null;
-  const customer =
-    charge && typeof charge === "object" ? charge.customer : null;
-  let client = await clientByCustomer(customer);
-  if (!client && typeof dispute.charge === "string") {
-    // Charge wasn't expanded — best effort via the PI's customer is
-    // unavailable here; skip rather than guess.
-    client = null;
-  }
-  if (!client) return;
-  await flagBillingProblem(client.id, "billing.dispute_created", {
-    disputeId: dispute.id,
-    amount: dispute.amount,
-    reason: dispute.reason,
+    dispute.charge && typeof dispute.charge === "object"
+      ? dispute.charge
+      : null;
+  const client = await clientByCustomer(charge?.customer);
+  await recordAudit({
+    actorUserId: null,
+    action: "billing.dispute_created",
+    targetType: client ? "client" : "stripe",
+    targetId: client?.id ?? dispute.id,
+    after: {
+      disputeId: dispute.id,
+      amount: dispute.amount,
+      reason: dispute.reason,
+      chargeId: typeof dispute.charge === "string"
+        ? dispute.charge
+        : dispute.charge?.id ?? null,
+    },
   });
+  await alertFounder(
+    `⚠ Stripe dispute opened — $${(dispute.amount / 100).toFixed(2)}`,
+    `<p>A card dispute was opened.</p>
+     <ul>
+       <li>Dispute: ${dispute.id}</li>
+       <li>Amount: $${(dispute.amount / 100).toFixed(2)}</li>
+       <li>Reason: ${dispute.reason}</li>
+       <li>Client: ${client?.id ?? "(unmatched — check Stripe)"}</li>
+     </ul>
+     <p>Handle in the Stripe dashboard. Access was NOT auto-revoked.</p>`
+  );
 }
 
 async function onSubscriptionPaused(sub: Stripe.Subscription) {
+  // Pauses are founder-driven (admin "pause" action / Stripe
+  // dashboard). Record only; no automatic state change here.
   const row =
     (sub.metadata?.clientId
       ? { id: sub.metadata.clientId }
@@ -594,10 +602,6 @@ async function onSubscriptionPaused(sub: Stripe.Subscription) {
             .limit(1)
         )[0]) ?? null;
   if (!row) return;
-  await db()
-    .update(clients)
-    .set({ mrrCents: 0, paymentFailedAt: new Date(), updatedAt: new Date() })
-    .where(eq(clients.id, row.id));
   await recordAudit({
     actorUserId: null,
     action: "billing.subscription_paused",
