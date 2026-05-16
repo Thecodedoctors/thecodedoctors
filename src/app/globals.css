@@ -182,6 +182,44 @@ body {
   }
 }
 
+/* Original ambient EKG line — used by the MOBILE hero backdrop, kept
+   byte-for-byte from before the desktop video/ECG redesign. */
+@keyframes ekg-draw {
+  0% {
+    stroke-dashoffset: 1000;
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: -1000;
+    opacity: 1;
+  }
+}
+
+@keyframes ekg-pulse {
+  0%, 100% {
+    filter: drop-shadow(0 0 6px rgba(61, 217, 214, 0.35));
+  }
+  50% {
+    filter: drop-shadow(0 0 14px rgba(61, 217, 214, 0.7));
+  }
+}
+
+.ekg-line {
+  stroke-dasharray: 1000;
+  animation:
+    ekg-draw 6s linear infinite,
+    ekg-pulse 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ekg-line {
+    animation: none;
+  }
+}
+
 /* ────────────────────────────────────────────────────────────────────────
    View Transitions — buttery cross-page navigation (mobile-app feel).
    Activated by experimental.viewTransition + <ViewTransition> in layout.tsx.
