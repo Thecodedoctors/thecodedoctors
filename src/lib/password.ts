@@ -9,11 +9,19 @@
  * `project_auth_credentials_interim.md`.
  */
 
-// OWASP-recommended minimum for PBKDF2-HMAC-SHA256 (2023+). Old hashes
-// stored at a lower count still verify — `verifyPassword` reads the
-// iteration count out of the stored string, so this only affects newly
-// created/changed passwords. They transparently upgrade on next set.
-const ITERATIONS = 600_000;
+// HARD PLATFORM CAP: Cloudflare Workers' Web Crypto rejects PBKDF2
+// with `iteration counts above 100000 are not supported`. Setting this
+// higher throws `NotSupportedError` at runtime on the Worker (NOT in
+// Node — Node's OpenSSL has no such cap, so this will pass local tests
+// and only break in production). Do not raise above 100_000 while we
+// run on Workers. `verifyPassword` reads the iteration count from the
+// stored hash, so existing hashes keep verifying regardless.
+//
+// 100k is below OWASP's PBKDF2-SHA256 guidance (~600k). The real
+// hardening path on this platform is a different KDF (scrypt/argon2
+// via a WASM lib) or the planned magic-link migration — tracked
+// separately; it is NOT achievable by bumping this constant.
+const ITERATIONS = 100_000;
 const KEY_BYTES = 32;
 const SALT_BYTES = 16;
 
