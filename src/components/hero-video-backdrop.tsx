@@ -152,11 +152,14 @@ export function HeroVideoBackdrop() {
           Own <defs> so it doesn't depend on the desktop SVG (which is
           display:none on mobile). Same .ecg-trace draw-on sweep. */}
       <div className="md:hidden" aria-hidden>
-        {/* Anchored LOW in the hero's empty space below the copy —
-            NOT centred through the paragraph. */}
-        <div className="absolute inset-x-0 bottom-6 h-24 bg-gradient-to-b from-transparent via-background/45 to-transparent" />
+        {/* Anchored in the hero's TOP padding band (≈112px of
+            guaranteed empty space above the "NOW ACCEPTING" badge) —
+            deterministically clear of ALL copy and still above the
+            fold/visible. Not centred (ran through the paragraph) and
+            not bottom-anchored (fell below the fold). */}
+        <div className="absolute inset-x-0 top-3 h-24 bg-gradient-to-b from-transparent via-background/45 to-transparent" />
         <svg
-          className="absolute inset-x-0 bottom-6 mx-auto h-24 w-full opacity-80"
+          className="absolute inset-x-0 top-3 mx-auto h-24 w-full opacity-80"
           viewBox="0 0 420 200"
           fill="none"
           preserveAspectRatio="xMidYMid meet"
