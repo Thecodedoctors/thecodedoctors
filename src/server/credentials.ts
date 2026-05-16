@@ -149,19 +149,25 @@ export async function getCredentialRequestForCurrentUser(
   };
 }
 
+export type CredentialSubmitResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
 /** Patient submits values. Encrypts + stores; emails the founder.
  *
- * Validation failures redirect back to the credential page with an
- * `error=…` query so the client component can render a banner instead
- * of the form silently re-rendering with no feedback.
+ * Validation/permission failures RETURN an inline error (the form is a
+ * client component using useActionState, so the page stays mounted and
+ * the user's typed values are preserved — no reload, no silent
+ * dead-end). Only success redirects (to the submitted view).
  */
 export async function submitCredentialRequest(
+  _prev: CredentialSubmitResult | null,
   formData: FormData
-): Promise<void> {
+): Promise<CredentialSubmitResult> {
   const session = await requireUser();
   const requestId = String(formData.get("requestId") ?? "");
   if (!requestId) {
-    redirect("/dashboard/credentials?error=missing-id");
+    return { ok: false, error: "This request is missing its id. Reload the page and try again." };
   }
 
   const rows = await db()
@@ -171,21 +177,23 @@ export async function submitCredentialRequest(
     .limit(1);
   const cred = rows[0];
   if (!cred) {
-    redirect("/dashboard/credentials?error=not-found");
+    return { ok: false, error: "We couldn't find this credential request. It may have been closed." };
   }
 
   const allowed = await userBelongsToClient(session.user.id, cred.clientId);
   if (!allowed) {
-    redirect("/dashboard/credentials?error=forbidden");
+    return { ok: false, error: "This request isn't on your account." };
   }
   if (cred.submittedAt || cred.closedAt) {
-    redirect(`/dashboard/credentials/${requestId}?error=already-submitted`);
+    return { ok: false, error: "This request was already submitted or closed — nothing more to send." };
   }
 
   if (!isCredentialCryptoConfigured()) {
-    throw new Error(
-      "Credential encryption isn't configured on the server. Tell the practice."
-    );
+    return {
+      ok: false,
+      error:
+        "Secure credential storage is temporarily unavailable. Please tell the practice — don't send these another way.",
+    };
   }
 
   const fields = parseFieldsSchema(cred.fieldsSchema);
@@ -193,7 +201,10 @@ export async function submitCredentialRequest(
   for (const f of fields) {
     const v = String(formData.get(f.key) ?? "").slice(0, MAX_FIELD_VALUE);
     if (f.required && !v.trim()) {
-      redirect(`/dashboard/credentials/${requestId}?error=missing-required`);
+      return {
+        ok: false,
+        error: `“${f.label}” is required. Your other entries are kept — just fill that in and submit again.`,
+      };
     }
     payload[f.key] = v;
   }

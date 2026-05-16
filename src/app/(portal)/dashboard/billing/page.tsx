@@ -22,6 +22,7 @@ import {
   type SavedCard,
   type ClientInvoice,
 } from "@/server/billing";
+import { UpgradeSubmitButton } from "@/components/billing/upgrade-submit-button";
 import { formatRelativeAgo } from "@/lib/time";
 import { cn } from "@/lib/cn";
 
@@ -524,9 +525,9 @@ function CurrentPlanCard({
         <form action={upgradeSubscriptionForCurrentUser} className="mt-5">
           <input type="hidden" name="plan" value={tier} />
           <input type="hidden" name="interval" value="yearly" />
-          <button
-            type="submit"
-            className="group w-full rounded-xl border border-accent/50 bg-accent-soft/30 px-4 py-3 text-left transition-colors hover:border-accent hover:bg-accent-soft/50"
+          <UpgradeSubmitButton
+            pendingLabel="Switching to yearly…"
+            className="group block w-full rounded-xl border border-accent/50 bg-accent-soft/30 px-4 py-3 text-left transition-colors hover:border-accent hover:bg-accent-soft/50"
           >
             <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">
               Switch to yearly · save 15%
@@ -535,7 +536,7 @@ function CurrentPlanCard({
               ${yearlyTotal(meta.monthlyPrice).toLocaleString()}/yr instead of $
               {(meta.monthlyPrice * 12).toLocaleString()}/yr.
             </p>
-          </button>
+          </UpgradeSubmitButton>
         </form>
       )}
     </div>
@@ -561,8 +562,8 @@ function UpgradePlanCard({
     <form action={upgradeSubscriptionForCurrentUser}>
       <input type="hidden" name="plan" value={to} />
       <input type="hidden" name="interval" value={interval} />
-      <button
-        type="submit"
+      <UpgradeSubmitButton
+        pendingLabel="Upgrading…"
         className="group flex w-full flex-col items-start gap-3 rounded-2xl border border-accent bg-accent-soft/20 p-6 text-left transition-colors hover:bg-accent-soft/40"
       >
         <div className="flex w-full items-start justify-between gap-3">
@@ -599,7 +600,7 @@ function UpgradePlanCard({
         <span className="font-mono text-xs text-accent">
           Charged immediately, prorated for the time remaining on your current plan.
         </span>
-      </button>
+      </UpgradeSubmitButton>
     </form>
   );
 }

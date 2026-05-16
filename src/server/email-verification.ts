@@ -121,11 +121,14 @@ export async function sendVerificationCodeForUserId(
  * Server action — patient enters the 6-digit code on /verify-email.
  * Verifies, marks the user as verified, redirects to dashboard.
  */
-export async function verifyEmailWithCode(formData: FormData): Promise<void> {
+export async function verifyEmailWithCode(
+  _prev: VerifyResult | null,
+  formData: FormData
+): Promise<VerifyResult> {
   const session = await requireUser();
   const code = String(formData.get("code") ?? "").replace(/\s+/g, "").trim();
   if (!/^\d{6}$/.test(code)) {
-    redirect("/verify-email?error=bad-code");
+    return { ok: false, error: "bad-code" };
   }
 
   const rows = await db()
@@ -139,17 +142,18 @@ export async function verifyEmailWithCode(formData: FormData): Promise<void> {
     .where(eq(users.id, session.user.id))
     .limit(1);
   const row = rows[0];
-  if (!row) redirect("/verify-email?error=not-found");
+  if (!row) return { ok: false, error: "not-found" };
+  // Already verified — treat as success; the client navigates on ok.
   if (row.verifiedAt) redirect("/dashboard?verified=already");
 
   if (!row.hash || !row.sentAt) {
-    redirect("/verify-email?error=no-code");
+    return { ok: false, error: "no-code" };
   }
   if (Date.now() - row.sentAt.getTime() > CODE_TTL_HOURS * 60 * 60 * 1000) {
-    redirect("/verify-email?error=expired");
+    return { ok: false, error: "expired" };
   }
   if (row.attempts >= MAX_ATTEMPTS) {
-    redirect("/verify-email?error=too-many-attempts");
+    return { ok: false, error: "too-many-attempts" };
   }
 
   const ok = await verifyPassword(code, row.hash);
@@ -158,7 +162,7 @@ export async function verifyEmailWithCode(formData: FormData): Promise<void> {
       .update(users)
       .set({ emailVerificationAttempts: (row.attempts ?? 0) + 1 })
       .where(eq(users.id, session.user.id));
-    redirect("/verify-email?error=wrong-code");
+    return { ok: false, error: "wrong-code" };
   }
 
   await markVerified(session.user.id);
@@ -201,10 +205,16 @@ async function markVerified(userId: string): Promise<void> {
  * dashboard banner. Rate-limited to 5 per day per user (DB-backed) so
  * a stuck UI loop doesn't burn through Resend quota.
  */
-export async function resendVerificationCode(): Promise<void> {
+export async function resendVerificationCode(
+  _prev: VerifyResult | null,
+  _formData: FormData
+): Promise<VerifyResult> {
+  // useActionState passes (prevState, formData); resend needs neither.
+  void _prev;
+  void _formData;
   const session = await requireUser();
 
-  // Already verified — no-op.
+  // Already verified — bounce to the dashboard (a real navigation).
   const rows = await db()
     .select({ verifiedAt: users.emailVerified })
     .from(users)
@@ -221,14 +231,14 @@ export async function resendVerificationCode(): Promise<void> {
     windowSeconds: 24 * 60 * 60,
   });
   if (!limit.ok) {
-    redirect("/verify-email?error=rate-limited");
+    return { ok: false, error: "rate-limited" };
   }
 
   const result = await sendVerificationCodeForUserId(session.user.id);
   if (!result.ok) {
-    redirect("/verify-email?error=send-failed");
+    return { ok: false, error: "send-failed" };
   }
-  redirect("/verify-email?resent=1");
+  return { ok: true };
 }
 
 /* ──────────────────────────────────────────────────────────────────────

@@ -123,16 +123,23 @@ export async function listEmailPreferencesForCurrentUser(
   return out;
 }
 
+export type PreferencesResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
 export async function updateEmailPreferences(
+  _prev: PreferencesResult | null,
   formData: FormData
-): Promise<void> {
+): Promise<PreferencesResult> {
   const session = await requireUser();
 
   // Form submits all keys present in the catalogue; checkbox absence = off.
   // The hidden `events` field carries the list of keys the form covered so
   // we know which rows to upsert (avoids deleting unrelated preferences).
   const keys = formData.getAll("event").map(String).filter(Boolean);
-  if (keys.length === 0) return;
+  if (keys.length === 0) {
+    return { ok: false, error: "Nothing to save." };
+  }
 
   for (const eventKey of keys) {
     const enabled = formData.get(`email:${eventKey}`) === "on";
@@ -157,4 +164,5 @@ export async function updateEmailPreferences(
   }
 
   revalidatePath("/settings/notifications");
+  return { ok: true };
 }

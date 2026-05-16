@@ -1,3 +1,8 @@
+"use client";
+
+import { useActionState } from "react";
+import { useFormStatus } from "react-dom";
+import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { updateEmailPreferences } from "@/server/settings";
 import type { NotifyEventDef } from "@/lib/notification-events";
@@ -13,9 +18,10 @@ export function NotificationsForm({
   accent: "accent" | "signal";
 }) {
   const accentColor = accent === "accent" ? "accent-accent" : "accent-signal";
+  const [state, action] = useActionState(updateEmailPreferences, null);
 
   return (
-    <form action={updateEmailPreferences} className="space-y-2">
+    <form action={action} className="space-y-2">
       <p className="text-sm text-muted">
         Choose which events trigger an email. In-app notifications are always
         on — these toggles only affect the email channel.
@@ -48,11 +54,26 @@ export function NotificationsForm({
         })}
       </ul>
 
-      <div className="pt-4">
-        <Button type="submit" variant="primary" size="sm">
-          Save preferences
-        </Button>
+      <div className="flex items-center gap-3 pt-4">
+        <SaveButton />
+        {state?.ok && (
+          <span className="inline-flex items-center gap-1.5 text-xs text-accent">
+            <Check className="h-3.5 w-3.5" /> Saved
+          </span>
+        )}
+        {state && !state.ok && (
+          <span className="text-xs text-signal">{state.error}</span>
+        )}
       </div>
     </form>
+  );
+}
+
+function SaveButton() {
+  const { pending } = useFormStatus();
+  return (
+    <Button type="submit" variant="primary" size="sm" disabled={pending}>
+      {pending ? "Saving…" : "Save preferences"}
+    </Button>
   );
 }
