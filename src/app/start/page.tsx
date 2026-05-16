@@ -149,9 +149,15 @@ export default async function StartPage({
             {cfg.sub}
           </p>
           <h1 className="mt-3 flex items-baseline gap-3 text-balance text-4xl font-semibold tracking-tight md:text-5xl">
-            ${priceCfg.price.toLocaleString()}
+            $
+            {(!isOneTime && interval === "yearly"
+              ? yearlyTotal(cfg.monthly.price)
+              : priceCfg.price
+            ).toLocaleString()}
             <span className="text-base font-normal text-muted">
-              {priceCfg.cadence}
+              {!isOneTime && interval === "yearly"
+                ? "/ year"
+                : priceCfg.cadence}
             </span>
           </h1>
           <p className="mt-2 flex items-center gap-2 text-xs">
@@ -164,7 +170,8 @@ export default async function StartPage({
           </p>
           {!isOneTime && interval === "yearly" && (
             <p className="mt-2 font-mono text-[11px] text-muted">
-              ${yearlyTotal(cfg.monthly.price).toLocaleString()}/yr charged today · save 15%
+              ≈ ${priceCfg.price.toLocaleString()}/mo · 15% off, charged
+              once a year today
             </p>
           )}
           <p className="mt-5 max-w-md text-base text-muted">

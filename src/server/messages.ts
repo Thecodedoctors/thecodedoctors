@@ -54,6 +54,7 @@ export async function addMessage(
       clientStripeSubscriptionId: clients.stripeSubscriptionId,
       clientCancelAtPeriodEnd: clients.cancelAtPeriodEnd,
       clientCurrentPeriodEnd: clients.currentPeriodEnd,
+      clientPaymentFailedAt: clients.paymentFailedAt,
     })
     .from(requests)
     .innerJoin(clients, eq(clients.id, requests.clientId))
@@ -78,6 +79,7 @@ export async function addMessage(
       stripeSubscriptionId: reqRows[0].clientStripeSubscriptionId,
       cancelAtPeriodEnd: reqRows[0].clientCancelAtPeriodEnd,
       currentPeriodEnd: reqRows[0].clientCurrentPeriodEnd,
+      paymentFailedAt: reqRows[0].clientPaymentFailedAt,
     });
     if (!eligibility.ok) {
       return { ok: false, error: eligibility.reason };

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type Stripe from "stripe";
 import { db, clients, webhookEvents } from "@/db";
 import { eq } from "drizzle-orm";
-import { getStripe, planFromPriceId } from "@/lib/stripe";
+import { getStripe, planFromPriceIdStrict } from "@/lib/stripe";
 import { recordAudit } from "@/server/audit";
 import {
   dispatchEvent,
@@ -85,6 +85,15 @@ export async function POST(req: Request) {
         break;
       case "invoice.payment_failed":
         await onInvoiceFailed(event.data.object as Stripe.Invoice);
+        break;
+      case "charge.refunded":
+        await onChargeRefunded(event.data.object as Stripe.Charge);
+        break;
+      case "charge.dispute.created":
+        await onDisputeCreated(event.data.object as Stripe.Dispute);
+        break;
+      case "customer.subscription.paused":
+        await onSubscriptionPaused(event.data.object as Stripe.Subscription);
         break;
       default:
         // Ignore everything we haven't subscribed to. Stripe re-tries
@@ -206,7 +215,11 @@ async function onSubscriptionChange(sub: Stripe.Subscription) {
   const subType = sub as unknown as {
     items: {
       data: Array<{
-        price: { id: string; unit_amount: number | null };
+        price: {
+          id: string;
+          unit_amount: number | null;
+          recurring?: { interval?: string | null } | null;
+        };
         current_period_end?: number;
       }>;
     };
@@ -227,11 +240,16 @@ async function onSubscriptionChange(sub: Stripe.Subscription) {
       .where(eq(clients.stripeSubscriptionId, sub.id))
       .limit(1);
     if (existing.length === 0) {
-      console.warn(
-        "[stripe-webhook] subscription update with no clientId match",
-        sub.id
+      // The client row may not exist YET — for a pending-signup the
+      // subscription.created event can arrive before
+      // checkout.session.completed runs finalize. Returning normally
+      // here would record the event as processed and Stripe would
+      // never retry, permanently leaving currentPeriodEnd / mrr /
+      // trialEndsAt unset. THROW so the route returns 500 and Stripe
+      // redelivers until finalize has created the client.
+      throw new Error(
+        `[stripe-webhook] no client for subscription ${sub.id} yet — retry`
       );
-      return;
     }
     clientId = existing[0].id;
   }
@@ -263,7 +281,15 @@ async function onSubscriptionChange(sub: Stripe.Subscription) {
 async function applySubscriptionUpdate(
   clientId: string,
   sub: Stripe.Subscription,
-  item: { price: { id: string; unit_amount: number | null } } | undefined,
+  item:
+    | {
+        price: {
+          id: string;
+          unit_amount: number | null;
+          recurring?: { interval?: string | null } | null;
+        };
+      }
+    | undefined,
   periodEndUnix: number | null,
   subType: {
     trial_end: number | null;
@@ -280,14 +306,28 @@ async function applySubscriptionUpdate(
     ? new Date(subType.trial_end * 1000)
     : null;
 
-  // Map price ID back to our plan label + interval. Yearly prices
-  // need their unit amount divided by 12 to compute monthly-recurring
-  // revenue (the dashboard + admin both display $/mo, never $/yr).
-  const { plan, interval } = planFromPriceId(priceId);
+  // Cadence comes from the LIVE price object's recurring.interval —
+  // never from an env reverse-lookup, which silently breaks on a
+  // rotated/stale/legacy price id and would mis-scale MRR by ~12x.
+  const interval: "monthly" | "yearly" =
+    item?.price.recurring?.interval === "year" ? "yearly" : "monthly";
   const monthlyCents =
     interval === "yearly" ? Math.round(billedAmount / 12) : billedAmount;
-  const planUpdate: { plan: "general" | "premium" } =
-    plan === "premium" ? { plan: "premium" } : { plan: "general" };
+
+  // Plan label: strict match against configured price ids. If the id
+  // matches NOTHING (env drift / rotation / legacy / the one-time
+  // Checkup price), do NOT guess "general" — that would silently
+  // downgrade a paying Premium customer and corrupt entitlements.
+  // Leave client.plan untouched and alert instead.
+  const resolvedPlan = planFromPriceIdStrict(priceId);
+  if (resolvedPlan === null) {
+    console.error(
+      "[stripe-webhook] UNMAPPED price id — plan label left unchanged",
+      { clientId, priceId, sub: sub.id }
+    );
+  }
+  const planUpdate: { plan?: "general" | "premium" } =
+    resolvedPlan === null ? {} : { plan: resolvedPlan };
 
   // Don't clobber locally-set lifecycle states. If ops has paused or
   // discharged this patient, keep that status; the Stripe sub being
@@ -342,7 +382,7 @@ async function applySubscriptionUpdate(
       stripeStatus: sub.status,
       cancelAtPeriodEnd: subType.cancel_at_period_end,
       priceId,
-      plan,
+      plan: resolvedPlan ?? "(unmapped — unchanged)",
       interval,
       trialing: Boolean(trialEndsAt && trialEndsAt.getTime() > Date.now()),
     },
@@ -385,9 +425,29 @@ async function onSubscriptionDeleted(sub: Stripe.Subscription) {
 }
 
 async function onInvoicePaid(inv: Stripe.Invoice) {
-  // Just log. Status keeps current_period_end advanced via the
-  // subscription.updated event Stripe also sends.
-  console.log("[stripe-webhook] invoice paid", inv.id, inv.amount_paid);
+  // Clear any prior payment-failed marker — a successful charge means
+  // the account is good again. (subscription.updated separately keeps
+  // currentPeriodEnd advanced.)
+  const subscriptionId =
+    (inv as unknown as { subscription?: string | { id: string } | null })
+      .subscription;
+  const subId =
+    typeof subscriptionId === "string"
+      ? subscriptionId
+      : subscriptionId?.id ?? null;
+  if (!subId) return;
+  const row = (
+    await db()
+      .select({ id: clients.id, paymentFailedAt: clients.paymentFailedAt })
+      .from(clients)
+      .where(eq(clients.stripeSubscriptionId, subId))
+      .limit(1)
+  )[0];
+  if (!row?.paymentFailedAt) return;
+  await db()
+    .update(clients)
+    .set({ paymentFailedAt: null, updatedAt: new Date() })
+    .where(eq(clients.id, row.id));
 }
 
 async function onInvoiceFailed(inv: Stripe.Invoice) {
@@ -408,6 +468,14 @@ async function onInvoiceFailed(inv: Stripe.Invoice) {
   )[0];
   if (!clientRow) return;
 
+  // Stamp the failure so the access gate can revoke after a short
+  // grace — otherwise the customer keeps full paid service for the
+  // entire Stripe dunning window (weeks) having paid nothing.
+  await db()
+    .update(clients)
+    .set({ paymentFailedAt: new Date(), updatedAt: new Date() })
+    .where(eq(clients.id, clientRow.id));
+
   await recordAudit({
     actorUserId: null,
     action: "billing.payment_failed",
@@ -425,5 +493,116 @@ async function onInvoiceFailed(inv: Stripe.Invoice) {
     href: "/billing",
     targetType: "client",
     targetId: clientRow.id,
+  });
+}
+
+/** Resolve a client by Stripe customer id. */
+async function clientByCustomer(
+  customer: string | { id: string } | null | undefined
+): Promise<{ id: string } | null> {
+  const customerId =
+    typeof customer === "string" ? customer : customer?.id ?? null;
+  if (!customerId) return null;
+  const row = (
+    await db()
+      .select({ id: clients.id })
+      .from(clients)
+      .where(eq(clients.stripeCustomerId, customerId))
+      .limit(1)
+  )[0];
+  return row ?? null;
+}
+
+/** Mark a client payment-failed (gate revokes after grace) + zero MRR.
+ *  Used by refund / dispute / pause — money came back or stopped. */
+async function flagBillingProblem(
+  clientId: string,
+  reason: string,
+  detail: Record<string, unknown>
+) {
+  await db()
+    .update(clients)
+    .set({ paymentFailedAt: new Date(), mrrCents: 0, updatedAt: new Date() })
+    .where(eq(clients.id, clientId));
+  await recordAudit({
+    actorUserId: null,
+    action: reason,
+    targetType: "client",
+    targetId: clientId,
+    after: detail,
+  });
+  const recipients = await membersOfClient(clientId);
+  await dispatchEvent({
+    recipients,
+    eventKey: "billing.payment_failed",
+    title: "There's a problem with your billing",
+    body: "Please check your billing settings or contact us so care isn't interrupted.",
+    href: "/billing",
+    targetType: "client",
+    targetId: clientId,
+  });
+}
+
+async function onChargeRefunded(charge: Stripe.Charge) {
+  // Only act on a FULL refund — partial refunds (goodwill credits)
+  // shouldn't revoke access.
+  const fullyRefunded =
+    charge.refunded === true ||
+    (typeof charge.amount === "number" &&
+      typeof charge.amount_refunded === "number" &&
+      charge.amount_refunded >= charge.amount &&
+      charge.amount > 0);
+  if (!fullyRefunded) return;
+  const client = await clientByCustomer(charge.customer);
+  if (!client) return;
+  await flagBillingProblem(client.id, "billing.charge_refunded", {
+    chargeId: charge.id,
+    amountRefunded: charge.amount_refunded,
+  });
+}
+
+async function onDisputeCreated(dispute: Stripe.Dispute) {
+  // A dispute means the money is being clawed back — revoke until it's
+  // resolved rather than keep delivering a paid service for free.
+  const charge =
+    typeof dispute.charge === "string" ? null : dispute.charge ?? null;
+  const customer =
+    charge && typeof charge === "object" ? charge.customer : null;
+  let client = await clientByCustomer(customer);
+  if (!client && typeof dispute.charge === "string") {
+    // Charge wasn't expanded — best effort via the PI's customer is
+    // unavailable here; skip rather than guess.
+    client = null;
+  }
+  if (!client) return;
+  await flagBillingProblem(client.id, "billing.dispute_created", {
+    disputeId: dispute.id,
+    amount: dispute.amount,
+    reason: dispute.reason,
+  });
+}
+
+async function onSubscriptionPaused(sub: Stripe.Subscription) {
+  const row =
+    (sub.metadata?.clientId
+      ? { id: sub.metadata.clientId }
+      : (
+          await db()
+            .select({ id: clients.id })
+            .from(clients)
+            .where(eq(clients.stripeSubscriptionId, sub.id))
+            .limit(1)
+        )[0]) ?? null;
+  if (!row) return;
+  await db()
+    .update(clients)
+    .set({ mrrCents: 0, paymentFailedAt: new Date(), updatedAt: new Date() })
+    .where(eq(clients.id, row.id));
+  await recordAudit({
+    actorUserId: null,
+    action: "billing.subscription_paused",
+    targetType: "client",
+    targetId: row.id,
+    before: { stripeSubscriptionId: sub.id },
   });
 }

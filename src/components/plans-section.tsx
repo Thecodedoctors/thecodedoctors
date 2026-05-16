@@ -138,10 +138,14 @@ export function PlansSection() {
           const plan = PLANS[key];
           const cfg = interval === "yearly" ? plan.yearly : plan.monthly;
           const isOneTime = key === "checkup";
-          const yearlyHint =
-            !isOneTime && interval === "yearly"
-              ? `$${yearlyTotal(plan.monthly.price).toLocaleString()}/yr today`
-              : null;
+          const isYearly = !isOneTime && interval === "yearly";
+          // On yearly, the number the customer is ACTUALLY charged
+          // today is the annual total — that must be the headline, not
+          // the per-month equivalent (showing $254 and charging $3,049
+          // is a chargeback/clarity problem).
+          const annualTotal = isYearly
+            ? yearlyTotal(plan.monthly.price)
+            : null;
 
           return (
             <li
@@ -170,9 +174,11 @@ export function PlansSection() {
 
               <div className="mt-6 flex items-baseline gap-2">
                 <span className="font-mono text-5xl font-semibold tracking-tight text-foreground">
-                  ${cfg.price.toLocaleString()}
+                  ${(annualTotal ?? cfg.price).toLocaleString()}
                 </span>
-                <span className="text-sm text-muted">{cfg.cadence}</span>
+                <span className="text-sm text-muted">
+                  {isYearly ? "/ year" : cfg.cadence}
+                </span>
               </div>
               <p className="mt-2 flex items-center gap-2 text-xs">
                 <span className="font-mono text-muted line-through decoration-muted/60">
@@ -182,9 +188,10 @@ export function PlansSection() {
                   new patients · 2027
                 </span>
               </p>
-              {yearlyHint && (
+              {isYearly && (
                 <p className="mt-1 font-mono text-[11px] text-muted">
-                  {yearlyHint} · save 15%
+                  ≈ ${cfg.price.toLocaleString()}/mo · 15% off, billed once
+                  a year
                 </p>
               )}
 

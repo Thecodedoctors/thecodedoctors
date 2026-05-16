@@ -73,6 +73,44 @@ export type BillingState = {
   mrrCents: number;
 };
 
+/**
+ * Confirm a returned Checkout Session actually paid AND belongs to the
+ * current user's client — so the "Payment received" banner reflects
+ * reality instead of just trusting the `?checkout=success` query param
+ * (which Stripe puts in the redirect regardless of whether the async
+ * webhook has provisioned anything yet, and which a user could forge).
+ */
+export async function verifyCheckoutSucceeded(
+  sessionId: string | undefined
+): Promise<boolean> {
+  if (!sessionId) return false;
+  const stripe = getStripe();
+  if (!stripe) return false;
+  try {
+    const session = await requireUser();
+    const client = await getOrCreateClientForUser(session.user.id, {
+      name: session.user.name,
+      email: session.user.email,
+    });
+    const cs = await stripe.checkout.sessions.retrieve(sessionId);
+    const paid =
+      cs.payment_status === "paid" ||
+      cs.payment_status === "no_payment_required";
+    const csCustomer =
+      typeof cs.customer === "string" ? cs.customer : cs.customer?.id ?? null;
+    // Ownership: the session's customer must be this client's customer.
+    // (Null client customer = webhook hasn't linked it yet → not
+    // confirmed; show the pending state, not a false success.)
+    const owns =
+      Boolean(client.stripeCustomerId) &&
+      csCustomer === client.stripeCustomerId;
+    return paid && owns;
+  } catch (err) {
+    console.error("[billing] verifyCheckoutSucceeded failed", err);
+    return false;
+  }
+}
+
 export async function getBillingStateForCurrentUser(): Promise<BillingState> {
   const session = await requireUser();
   const client = await getOrCreateClientForUser(session.user.id, {
@@ -192,10 +230,23 @@ export async function startCheckoutForCurrentUser(
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: `${site.url}/dashboard/billing?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${site.url}/dashboard/billing?checkout=canceled`,
-      allow_promotion_codes: true,
+      // Promo codes OFF on subscription checkout: a forever/100%-off
+      // coupon stacked on top of a trial / the Checkup credit = $0
+      // recurring forever. No launch campaign needs this; re-enable
+      // deliberately per-campaign if/when one exists.
+      allow_promotion_codes: false,
       billing_address_collection: "auto",
       subscription_data: {
-        metadata: { clientId: client.id, plan, interval },
+        // checkup_conversion MUST live here, not on the session-level
+        // metadata below: Stripe only copies `subscription_data.
+        // metadata` onto the Subscription object, and the webhook reads
+        // it from `sub.metadata` to stamp the one-time credit ledger.
+        metadata: {
+          clientId: client.id,
+          plan,
+          interval,
+          checkup_conversion: isCheckupConversion ? "true" : "false",
+        },
         ...(isCheckupConversion && { trial_period_days: checkupTrialDays }),
       },
       metadata: {
@@ -320,18 +371,51 @@ export async function upgradeSubscriptionForCurrentUser(
   // rides the higher tier for free. The throw routes into the catch
   // below → the user gets the "upgrade failed" banner and stays on
   // their current (paid) plan.
+  // If the subscription is still in its trial (e.g. a Checkup→Care
+  // conversion mid-credit, or a /trial user), an item swap with
+  // always_invoice would END the trial and charge immediately — a
+  // consent gap, and on a checkup-conversion it also hands the user
+  // the *new* (higher) tier for the WHOLE original trial window
+  // (~$1.8k of Premium for a $599 credit). Instead: keep them on
+  // trial, no charge now, and clamp trial_end so it never EXTENDS and
+  // never exceeds the credit value of the new plan (min of the two).
+  const subTrialEnd =
+    (subscription as unknown as { trial_end: number | null }).trial_end;
+  const isTrialing =
+    subscription.status === "trialing" ||
+    (typeof subTrialEnd === "number" && subTrialEnd * 1000 > Date.now());
+
   let updatedId: string;
   try {
-    const updated = await stripe.subscriptions.update(
-      client.stripeSubscriptionId,
-      {
-        items: [{ id: currentItemId, price: newPriceId }],
-        proration_behavior: "always_invoice",
-        payment_behavior: "error_if_incomplete",
-        metadata: { clientId: client.id, plan, interval },
-      }
-    );
-    updatedId = updated.id;
+    if (isTrialing) {
+      const nowSec = Math.floor(Date.now() / 1000);
+      const cappedEnd = nowSec + checkupCreditTrialDays(plan) * 24 * 60 * 60;
+      const newTrialEnd =
+        typeof subTrialEnd === "number"
+          ? Math.min(subTrialEnd, cappedEnd)
+          : cappedEnd;
+      const updated = await stripe.subscriptions.update(
+        client.stripeSubscriptionId,
+        {
+          items: [{ id: currentItemId, price: newPriceId }],
+          proration_behavior: "none",
+          trial_end: newTrialEnd,
+          metadata: { clientId: client.id, plan, interval },
+        }
+      );
+      updatedId = updated.id;
+    } else {
+      const updated = await stripe.subscriptions.update(
+        client.stripeSubscriptionId,
+        {
+          items: [{ id: currentItemId, price: newPriceId }],
+          proration_behavior: "always_invoice",
+          payment_behavior: "error_if_incomplete",
+          metadata: { clientId: client.id, plan, interval },
+        }
+      );
+      updatedId = updated.id;
+    }
   } catch (err) {
     console.error(
       "[billing.upgrade] Stripe subscriptions.update failed",

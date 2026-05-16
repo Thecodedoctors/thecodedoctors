@@ -299,7 +299,9 @@ async function startSubscriptionCheckout(args: {
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: `${site.url}/welcome?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${site.url}/start?canceled=1`,
-      allow_promotion_codes: true,
+      // Off: a forever/100%-off coupon stacked on the trial = free
+      // recurring care. No launch campaign uses promo codes.
+      allow_promotion_codes: false,
       billing_address_collection: "auto",
       subscription_data: {
         metadata: {
@@ -367,7 +369,7 @@ async function startCheckupCheckout(args: {
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: `${site.url}/welcome?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${site.url}/start?plan=checkup&canceled=1`,
-      allow_promotion_codes: true,
+      allow_promotion_codes: false,
       billing_address_collection: "auto",
       // Save the customer + payment intent so we can issue refunds
       // later (the money-back guarantee on Checkup) without manual

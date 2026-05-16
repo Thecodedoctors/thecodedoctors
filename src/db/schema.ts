@@ -220,6 +220,11 @@ export const clients = pgTable(
     stripeCustomerId: text("stripe_customer_id"),
     stripeSubscriptionId: text("stripe_subscription_id"),
     stripePriceId: text("stripe_price_id"),
+    /** Set when a renewal invoice fails / a charge is refunded or
+     *  disputed; cleared on the next successful payment. Gates access
+     *  after a short grace so failed/refunded/disputed customers stop
+     *  receiving paid service while Stripe dunning drags on. */
+    paymentFailedAt: timestamp("payment_failed_at", { mode: "date" }),
     /** End of the current billing period; what the dashboard renders as
      *  "Renews on" or "Access until". */
     currentPeriodEnd: timestamp("current_period_end", { mode: "date" }),

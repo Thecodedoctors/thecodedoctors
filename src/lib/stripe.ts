@@ -94,3 +94,31 @@ export function planFromPriceId(
   }
   return { plan: "general", interval: "monthly" };
 }
+
+/**
+ * Strict variant for the webhook's money path: returns `plan: null`
+ * for a price id that doesn't match any configured env var instead of
+ * silently guessing "general". Lets the caller refuse to overwrite a
+ * paying customer's plan (and their MRR) off a stale/rotated/legacy
+ * price id. Interval is intentionally NOT returned — the webhook must
+ * derive cadence from the live price object's `recurring.interval`,
+ * never from this env reverse-lookup.
+ */
+export function planFromPriceIdStrict(
+  priceId: string | null | undefined
+): Plan | null {
+  if (!priceId) return null;
+  if (
+    priceId === process.env.STRIPE_PRICE_PREMIUM_YEARLY ||
+    priceId === process.env.STRIPE_PRICE_PREMIUM
+  ) {
+    return "premium";
+  }
+  if (
+    priceId === process.env.STRIPE_PRICE_GENERAL_YEARLY ||
+    priceId === process.env.STRIPE_PRICE_GENERAL
+  ) {
+    return "general";
+  }
+  return null;
+}

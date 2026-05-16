@@ -19,12 +19,19 @@ export async function getOrCreateClientForUser(
   userId: string,
   hint: { name?: string | null; email?: string | null } = {}
 ): Promise<Client> {
-  // Existing membership?
+  // Existing membership? Deterministic: oldest membership wins. A
+  // `.limit(1)` with no ORDER BY is nondeterministic in Postgres — if
+  // a user ever has two memberships (e.g. a double-submit race created
+  // a duplicate client) every billing read could bind to a DIFFERENT
+  // client per request, so they pay on one and the page reads the
+  // other → "subscribe again" → double charge. Pinning to the oldest
+  // makes all reads agree.
   const existing = await db()
     .select({ client: clients })
     .from(clientMembers)
     .innerJoin(clients, eq(clients.id, clientMembers.clientId))
     .where(eq(clientMembers.userId, userId))
+    .orderBy(clientMembers.createdAt)
     .limit(1);
 
   if (existing.length > 0) {
@@ -81,6 +88,7 @@ export async function getClientForUser(userId: string): Promise<Client | null> {
     .from(clientMembers)
     .innerJoin(clients, eq(clients.id, clientMembers.clientId))
     .where(eq(clientMembers.userId, userId))
+    .orderBy(clientMembers.createdAt)
     .limit(1);
   return rows[0]?.client ?? null;
 }
@@ -131,13 +139,35 @@ export async function knownUrlsForClient(clientId: string): Promise<string[]> {
  *
  * `lead` (no payment yet), `paused`, and `discharged` all bounce.
  */
+/** Grace after a failed/refunded/disputed payment before access is
+ *  cut — long enough that a Stripe smart-retry which then succeeds
+ *  (and clears the flag) doesn't lock a good customer out, short
+ *  enough that we're not giving away weeks of paid service. */
+const PAYMENT_FAILURE_GRACE_MS = 3 * 24 * 60 * 60 * 1000;
+
 export async function requireActiveOrTrialing(client: {
   status: string;
   trialEndsAt: Date | string | null;
   stripeSubscriptionId: string | null;
   cancelAtPeriodEnd?: boolean;
   currentPeriodEnd?: Date | string | null;
+  paymentFailedAt?: Date | string | null;
 }): Promise<{ ok: true } | { ok: false; reason: string; redirect: string }> {
+  // Failed / refunded / disputed payment that wasn't cleared by a
+  // later successful charge — revoke once the short grace lapses.
+  if (client.paymentFailedAt) {
+    const failedMs = new Date(client.paymentFailedAt).getTime();
+    if (
+      Number.isFinite(failedMs) &&
+      Date.now() - failedMs > PAYMENT_FAILURE_GRACE_MS
+    ) {
+      return {
+        ok: false,
+        reason: "There's an unresolved problem with your last payment.",
+        redirect: "/billing?inactive=1",
+      };
+    }
+  }
   if (client.status !== "active") {
     return {
       ok: false,
@@ -152,11 +182,21 @@ export async function requireActiveOrTrialing(client: {
   }
   // Subscription path — covers paid customers.
   if (client.stripeSubscriptionId) {
-    // If they cancelled, they keep access until current_period_end;
-    // after that, treat as expired.
-    if (client.cancelAtPeriodEnd && client.currentPeriodEnd) {
+    if (client.cancelAtPeriodEnd) {
+      // Cancelled: access until current_period_end, then expired.
+      // FAIL CLOSED if we don't have a period end — a cancelled
+      // subscription with an unknown end (portal cancel, trial
+      // cancel, a webhook that resolved null) must NOT grant
+      // indefinite access.
+      if (!client.currentPeriodEnd) {
+        return {
+          ok: false,
+          reason: "Your subscription has been cancelled.",
+          redirect: "/billing?inactive=1",
+        };
+      }
       const end = new Date(client.currentPeriodEnd).getTime();
-      if (end < Date.now()) {
+      if (!Number.isFinite(end) || end < Date.now()) {
         return {
           ok: false,
           reason: "Your subscription has ended.",

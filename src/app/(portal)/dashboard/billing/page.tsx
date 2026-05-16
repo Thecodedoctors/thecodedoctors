@@ -13,6 +13,7 @@ import {
 import { Section } from "@/components/ui/section";
 import {
   getBillingStateForCurrentUser,
+  verifyCheckoutSucceeded,
   startCheckoutForCurrentUser,
   upgradeSubscriptionForCurrentUser,
   listPaymentMethodsForCurrentUser,
@@ -33,6 +34,7 @@ export const metadata: Metadata = {
 
 type SearchParams = Promise<{
   checkout?: string;
+  session_id?: string;
   portal?: string;
   upgrade?: string;
   card?: string;
@@ -124,6 +126,12 @@ export default async function BillingPage({
     listInvoicesForCurrentUser(),
   ]);
   const params = await searchParams;
+  // Don't trust ?checkout=success blindly — confirm the session paid
+  // AND belongs to this client before claiming "Payment received".
+  const checkoutConfirmed =
+    params.checkout === "success"
+      ? await verifyCheckoutSucceeded(params.session_id)
+      : false;
 
   return (
     <Section size="md" reveal={false}>
@@ -137,7 +145,7 @@ export default async function BillingPage({
           </h1>
         </div>
 
-        <Banners params={params} />
+        <Banners params={params} checkoutConfirmed={checkoutConfirmed} />
 
         {!state.configured ? (
           <NotConfiguredCard />
@@ -165,6 +173,7 @@ export default async function BillingPage({
 
 function Banners({
   params,
+  checkoutConfirmed,
 }: {
   params: {
     checkout?: string;
@@ -173,14 +182,22 @@ function Banners({
     card?: string;
     trial?: string;
   };
+  checkoutConfirmed: boolean;
 }) {
   return (
     <>
-      {params.checkout === "success" && (
+      {params.checkout === "success" && checkoutConfirmed && (
         <Banner
           tone="success"
           title="Payment received"
-          body="Stripe confirmed your subscription. You're active — your doctor will be in touch."
+          body="Stripe confirmed your payment. You're all set — your doctor will be in touch."
+        />
+      )}
+      {params.checkout === "success" && !checkoutConfirmed && (
+        <Banner
+          tone="muted"
+          title="Confirming your payment…"
+          body="Stripe is finalizing your payment — this can take a few seconds. Refresh in a moment; if your plan still doesn't show, contact hello@thecodedoctors.com."
         />
       )}
       {params.checkout === "canceled" && (
@@ -208,7 +225,7 @@ function Banners({
         <Banner
           tone="success"
           title="Plan switched"
-          body="The prorated upgrade amount was charged to your card on file. Welcome to the new tier."
+          body="Your plan change is being applied. If you were on a trial it continues; otherwise any prorated amount is billed to your card on file — the exact figure shows on your next invoice."
         />
       )}
       {params.upgrade === "not-higher" && (
