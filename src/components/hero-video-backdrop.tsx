@@ -145,6 +145,54 @@ export function HeroVideoBackdrop() {
         </svg>
         <div className="absolute inset-x-0 -top-28 mx-auto h-96 max-w-4xl rounded-full bg-accent/10 blur-3xl" />
       </div>
+
+      {/* MOBILE ECG — a single, correctly-proportioned heartbeat.
+          preserveAspectRatio="xMidYMid meet" (NOT "none") so it keeps
+          its shape and never squishes into a scribble at phone width.
+          Own <defs> so it doesn't depend on the desktop SVG (which is
+          display:none on mobile). Same .ecg-trace draw-on sweep. */}
+      <div className="md:hidden" aria-hidden>
+        <div className="absolute inset-x-0 top-1/2 h-36 -translate-y-1/2 bg-gradient-to-b from-transparent via-background/55 to-transparent" />
+        <svg
+          className="absolute inset-x-0 top-1/2 mx-auto h-36 w-full -translate-y-1/2 opacity-90"
+          viewBox="0 0 420 200"
+          fill="none"
+          preserveAspectRatio="xMidYMid meet"
+        >
+          <defs>
+            <linearGradient id="ecg-fade-m" x1="0" x2="1">
+              <stop offset="0" stopColor="var(--accent)" stopOpacity="0" />
+              <stop offset="0.14" stopColor="var(--accent)" stopOpacity="1" />
+              <stop offset="0.86" stopColor="var(--accent)" stopOpacity="1" />
+              <stop offset="1" stopColor="var(--accent)" stopOpacity="0" />
+            </linearGradient>
+            <filter
+              id="ecg-glow-m"
+              x="-10%"
+              y="-60%"
+              width="120%"
+              height="220%"
+            >
+              <feGaussianBlur stdDeviation="3.4" result="b" />
+              <feMerge>
+                <feMergeNode in="b" />
+                <feMergeNode in="b" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+          </defs>
+          <path
+            className="ecg-trace"
+            d={ECG_D_MOBILE}
+            pathLength={2000}
+            stroke="url(#ecg-fade-m)"
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            filter="url(#ecg-glow-m)"
+          />
+        </svg>
+      </div>
     </div>
   );
 }
@@ -170,3 +218,12 @@ const ECG_BEAT = (x: number) =>
 
 const ECG_D =
   "M0 100 " + [0, 300, 600, 900].map(ECG_BEAT).join(" ");
+
+/**
+ * Mobile: ONE clean beat with flat lead-in/out, in a 420×200 viewBox
+ * rendered with preserveAspectRatio="meet" so the heartbeat keeps its
+ * true shape at phone width (the desktop 4-beat path squished into
+ * ~390px with preserveAspectRatio="none" was the scribble-through-
+ * the-text bug).
+ */
+const ECG_D_MOBILE = `M0 100 L60 100 ${ECG_BEAT(60)} L420 100`;
