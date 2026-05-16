@@ -79,11 +79,18 @@ export function HeroVideoBackdrop() {
       <div className="absolute inset-0 bg-background/78" />
       <div className="absolute inset-0 bg-gradient-to-r from-background via-background/82 to-background/45" />
       <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-background to-transparent" />
-      {/* Darker band right behind the ECG so the accent trace really
-          pops — still translucent, the video stays visible through it. */}
-      <div className="absolute inset-x-0 top-1/2 h-56 -translate-y-1/2 bg-gradient-to-b from-transparent via-background/55 to-transparent" />
+      {/* ECG layer (band + trace + glow) is DESKTOP-ONLY. On phones
+          the 1200-wide waveform squished into ~390px (preserveAspect
+          none) collided with the body copy and looked broken — and
+          the video doesn't load on mobile either, so small screens
+          get the clean, calm dark hero. md: = 768px = same breakpoint
+          as the video gate. */}
+      <div className="hidden md:block">
+        {/* Darker band right behind the ECG so the accent trace really
+            pops — still translucent, the video stays visible through it. */}
+        <div className="absolute inset-x-0 top-1/2 h-56 -translate-y-1/2 bg-gradient-to-b from-transparent via-background/55 to-transparent" />
 
-      {/* Brand ECG cardiac-monitor trace — realistic P-QRS-T wave,
+        {/* Brand ECG cardiac-monitor trace — realistic P-QRS-T wave,
           glowing comet sweep + a beacon that rides the exact path.
           ON TOP of the video + overlay, behind the hero content.
           Pure inline SVG/CSS + native SMIL — no JS, weightless. */}
@@ -135,8 +142,9 @@ export function HeroVideoBackdrop() {
           strokeLinejoin="round"
           filter="url(#ecg-glow)"
         />
-      </svg>
-      <div className="absolute inset-x-0 -top-28 mx-auto h-96 max-w-4xl rounded-full bg-accent/10 blur-3xl" />
+        </svg>
+        <div className="absolute inset-x-0 -top-28 mx-auto h-96 max-w-4xl rounded-full bg-accent/10 blur-3xl" />
+      </div>
     </div>
   );
 }
