@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { lt } from "drizzle-orm";
 import { runChecksForAllClients } from "@/server/health";
+import { db, rateLimitCounters } from "@/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,9 +39,26 @@ export async function POST(request: Request) {
 
   try {
     const result = await runChecksForAllClients();
+
+    // Best-effort housekeeping: purge expired rate-limit counters so
+    // that table (one row per key per window — the hottest-growth
+    // table on the login/checkout path) doesn't grow without bound.
+    // Never let a cleanup failure fail the uptime cron.
+    let rateLimitPurged = 0;
+    try {
+      const deleted = await db()
+        .delete(rateLimitCounters)
+        .where(lt(rateLimitCounters.expiresAt, new Date()))
+        .returning({ key: rateLimitCounters.key });
+      rateLimitPurged = deleted.length;
+    } catch (err) {
+      console.error("[cron/uptime] rate-limit purge failed (non-fatal)", err);
+    }
+
     return NextResponse.json({
       ok: true,
       ...result,
+      rateLimitPurged,
       ranAt: new Date().toISOString(),
     });
   } catch (err) {

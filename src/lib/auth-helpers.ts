@@ -70,6 +70,24 @@ export async function requireStaff(redirectTo?: string): Promise<Session> {
 }
 
 /**
+ * Senior gate — founder or senior_doctor. For actions that aren't
+ * founder-exclusive but must NOT be reachable by a basic `doctor` or
+ * a `readonly` account: pausing/unpausing a patient (mutates Stripe
+ * billing) and viewing the full staff roster (other staff's email,
+ * 2FA status, suspension reasons).
+ */
+export async function requireSeniorStaff(
+  redirectTo?: string
+): Promise<Session> {
+  const session = await requireStaff(redirectTo);
+  const role = session.user.role;
+  if (role !== "founder" && role !== "senior_doctor") {
+    redirect(ADMIN_HOME);
+  }
+  return session;
+}
+
+/**
  * Strictest gate — founder only. Used for the credential vault
  * (read side only) and any other action where the founder explicitly
  * said "only me." Other staff get bounced to /admin.

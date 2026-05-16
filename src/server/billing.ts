@@ -36,6 +36,24 @@ export type PlanKey = "general" | "premium";
 
 const PLAN_RANK: Record<PlanKey, number> = { general: 1, premium: 2 };
 
+/** Headline monthly price in whole dollars, used only to size the
+ *  Checkup→Care credit. Keep in sync with the pricing pages. */
+const PLAN_MONTHLY_USD: Record<PlanKey, number> = {
+  general: 299,
+  premium: 899,
+};
+
+/** The Checkup costs $599; a converting customer's free window should
+ *  be worth exactly that against the plan they pick — ~60 days on
+ *  General, ~20 on Premium — not a flat 60 days regardless of tier.
+ *  Clamped to a sane 7–90 day range. */
+const CHECKUP_CREDIT_USD = 599;
+function checkupCreditTrialDays(plan: PlanKey): number {
+  const monthly = PLAN_MONTHLY_USD[plan];
+  const days = Math.round((CHECKUP_CREDIT_USD / monthly) * 30);
+  return Math.max(7, Math.min(90, days));
+}
+
 export type BillingState = {
   configured: boolean;
   plan: string;
@@ -152,18 +170,21 @@ export async function startCheckoutForCurrentUser(
         .where(eq(clients.id, client.id));
     }
 
-    // Checkup → Care: if this client originally bought the $599
-    // Checkup and is now subscribing to recurring care, give them 60
-    // days free on the new subscription. The Checkup payment
-    // effectively covers their first 2 months of ongoing care.
+    // Checkup → Care: a client who bought the $599 Checkup converting
+    // to recurring care gets free days WORTH $599 against the plan
+    // they pick — not a flat 60 days. Flat 60 on Premium ($899/mo)
+    // was ~$1,798 of value for a $599 payment (an unbounded leak); the
+    // credit is the Checkup fee, so size the free window to it.
     //
-    // Trial-based instead of coupon-based because Stripe Checkout
-    // shows "$0 due today, then $299/mo from {date}" cleanly in its
-    // UI — no confused "$299 due" / "$0 charged" gap.
+    // Gated on `checkupCreditConsumedAt`: the credit is marked consumed
+    // by the subscription webhook once the discounted sub actually
+    // starts, so it can't be granted twice on the same client.
     //
-    // For Premium ($899/mo), 60 days = ~$1798 of value vs the $599
-    // they paid — generous, but a deliberate launch nurture choice.
-    const isCheckupConversion = client.plan === "checkup";
+    // Trial-based (not coupon) so Stripe Checkout shows "$0 due today,
+    // then $X/mo from {date}" cleanly.
+    const isCheckupConversion =
+      client.plan === "checkup" && !client.checkupCreditConsumedAt;
+    const checkupTrialDays = checkupCreditTrialDays(plan);
 
     checkoutSession = await stripe.checkout.sessions.create({
       mode: "subscription",
@@ -175,7 +196,7 @@ export async function startCheckoutForCurrentUser(
       billing_address_collection: "auto",
       subscription_data: {
         metadata: { clientId: client.id, plan, interval },
-        ...(isCheckupConversion && { trial_period_days: 60 }),
+        ...(isCheckupConversion && { trial_period_days: checkupTrialDays }),
       },
       metadata: {
         clientId: client.id,

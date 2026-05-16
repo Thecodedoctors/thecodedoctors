@@ -45,33 +45,26 @@ export async function POST(req: Request) {
     return new NextResponse("Invalid signature", { status: 400 });
   }
 
-  // Idempotency: refuse to process the same event id twice. Stripe
-  // legitimately retries on 5xx and on transient network blips; without
-  // this guard, a retry doubles up the side-effects (duplicate emails,
-  // status flips, notifications). Inserting first means racing
-  // duplicate webhooks both lose-fast on the unique key.
+  // Idempotency: skip if we've ALREADY fully processed this event.
+  // The ledger row is written only AFTER the handler succeeds (below),
+  // so a handler that throws is NOT recorded — Stripe retries it and
+  // we reprocess, instead of the old behaviour where a transient
+  // failure after the insert permanently dropped the side-effect
+  // (paid customer never provisioned). Handlers are upsert/idempotent,
+  // so at-least-once delivery is safe.
   try {
-    await db().insert(webhookEvents).values({
-      id: event.id,
-      source: "stripe",
-      eventType: event.type,
-    });
-  } catch (err) {
-    // Unique-constraint violation = we've handled this one already.
-    // Any other error surfaces as a 500 so Stripe retries.
-    const code =
-      typeof (err as { code?: unknown }).code === "string"
-        ? (err as { code: string }).code
-        : "";
-    if (
-      code === "23505" ||
-      String((err as { message?: unknown }).message ?? "").includes(
-        "duplicate key"
-      )
-    ) {
+    const seen = await db()
+      .select({ id: webhookEvents.id })
+      .from(webhookEvents)
+      .where(eq(webhookEvents.id, event.id))
+      .limit(1);
+    if (seen.length > 0) {
       return NextResponse.json({ received: true, dedup: true });
     }
-    console.error("[stripe-webhook] event-ledger insert failed", err);
+  } catch (err) {
+    console.error("[stripe-webhook] idempotency check failed", err);
+    // Can't confirm whether we've processed this — make Stripe retry
+    // rather than risk a double or a drop.
     return new NextResponse("Internal error", { status: 500 });
   }
 
@@ -100,10 +93,36 @@ export async function POST(req: Request) {
     }
   } catch (err) {
     console.error("[stripe-webhook] handler failed", event.type, err);
-    // 500 makes Stripe retry; only return 500 for transient errors.
-    // Permanent failures should log but return 200 so we don't pile up
-    // retries forever.
+    // 500 makes Stripe retry. The event is intentionally NOT recorded
+    // yet, so the retry reprocesses it.
     return new NextResponse("Internal error", { status: 500 });
+  }
+
+  // Handler succeeded — record the event so future deliveries dedup.
+  // A concurrent duplicate delivery may race to here; the primary key
+  // makes the loser a harmless no-op.
+  try {
+    await db().insert(webhookEvents).values({
+      id: event.id,
+      source: "stripe",
+      eventType: event.type,
+    });
+  } catch (err) {
+    const code =
+      typeof (err as { code?: unknown }).code === "string"
+        ? (err as { code: string }).code
+        : "";
+    const dup =
+      code === "23505" ||
+      String((err as { message?: unknown }).message ?? "").includes(
+        "duplicate key"
+      );
+    if (!dup) {
+      // The side-effects already ran; losing the ledger row would only
+      // cause a (safe, idempotent) reprocess on retry. Log and ack so
+      // we don't pile up retries for work that's actually done.
+      console.error("[stripe-webhook] ledger write failed post-handler", err);
+    }
   }
 
   return NextResponse.json({ received: true });
@@ -289,6 +308,13 @@ async function applySubscriptionUpdate(
       ? "active"
       : "lead";
 
+  // Mark the Checkup→Care credit consumed the moment a discounted
+  // (trialing) conversion subscription actually starts — so it can
+  // never be granted a second time on this client. Only set it, never
+  // clear it (one-way ledger).
+  const consumesCheckupCredit =
+    sub.metadata?.checkup_conversion === "true" && trialEndsAt !== null;
+
   await db()
     .update(clients)
     .set({
@@ -300,6 +326,9 @@ async function applySubscriptionUpdate(
       cancelAtPeriodEnd: subType.cancel_at_period_end,
       mrrCents: isActive && !subType.cancel_at_period_end ? monthlyCents : 0,
       status: nextStatus,
+      ...(consumesCheckupCredit
+        ? { checkupCreditConsumedAt: new Date() }
+        : {}),
       updatedAt: new Date(),
     })
     .where(eq(clients.id, clientId));

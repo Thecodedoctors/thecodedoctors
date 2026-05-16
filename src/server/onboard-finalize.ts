@@ -127,47 +127,77 @@ export async function finalizePendingSignupBySessionId(
       ? session.subscription
       : session.subscription?.id ?? null;
 
+  // neon-http has no transactions, so the three inserts can't be one
+  // atomic unit. Instead each step is an idempotent upsert keyed on an
+  // app-generated id, and we resolve ids by lookup afterwards — so a
+  // partial failure (process killed / Neon blip between steps) is
+  // fully recovered on the next call (webhook safety-net or a /welcome
+  // refresh) instead of leaving a paid customer with a half-built,
+  // unreachable account.
   let userId: string;
   let clientId: string;
   try {
-    const userRows = await db()
+    // 1. User — create, or no-op if the email already exists.
+    await db()
       .insert(users)
       .values({
+        id: crypto.randomUUID(),
         name: pending.userName,
         email: pending.email,
         passwordHash: pending.passwordHash,
         role: "client",
       })
-      .returning({ id: users.id });
-    userId = userRows[0].id;
+      .onConflictDoNothing({ target: users.email });
+    const uRows = await db()
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, pending.email))
+      .limit(1);
+    if (uRows.length === 0) {
+      throw new Error("user upsert yielded no row");
+    }
+    userId = uRows[0].id;
 
-    const clientRows = await db()
-      .insert(clients)
-      .values({
-        name: pending.businessName,
-        websiteUrl: pending.websiteUrl,
-        primaryUserId: userId,
-        plan: pending.plan as "general" | "premium" | "checkup",
-        status: "active",
-        signupSource: pending.signupSource,
-        referredByCode: pending.referredByCode,
-        stripeCustomerId: customerId,
-        // Subscriptions populate stripeSubscriptionId; one-time Checkup
-        // purchases stay null here (no recurring billing). The webhook
-        // for `customer.subscription.updated` later populates this for
-        // the recurring plans.
-        stripeSubscriptionId: subscriptionId,
-        // trialEndsAt + currentPeriodEnd will populate on the
-        // subsequent customer.subscription.updated webhook event.
-      })
-      .returning({ id: clients.id });
-    clientId = clientRows[0].id;
+    // 2. Client — reuse the one already owned by this user if a prior
+    //    partial run created it; otherwise create it. Keyed on
+    //    primaryUserId so a "client created, membership failed" partial
+    //    doesn't orphan a second client.
+    const existingClient = await db()
+      .select({ id: clients.id })
+      .from(clients)
+      .where(eq(clients.primaryUserId, userId))
+      .limit(1);
+    if (existingClient.length > 0) {
+      clientId = existingClient[0].id;
+    } else {
+      const newClientId = crypto.randomUUID();
+      await db()
+        .insert(clients)
+        .values({
+          id: newClientId,
+          name: pending.businessName,
+          websiteUrl: pending.websiteUrl,
+          primaryUserId: userId,
+          plan: pending.plan as "general" | "premium" | "checkup",
+          status: "active",
+          signupSource: pending.signupSource,
+          referredByCode: pending.referredByCode,
+          stripeCustomerId: customerId,
+          // Subscriptions populate stripeSubscriptionId; one-time
+          // Checkup purchases stay null (no recurring billing). The
+          // customer.subscription.updated webhook fills it for plans.
+          stripeSubscriptionId: subscriptionId,
+        })
+        .onConflictDoNothing({ target: clients.id });
+      clientId = newClientId;
+    }
 
-    await db().insert(clientMembers).values({
-      clientId,
-      userId,
-      isAdmin: true,
-    });
+    // 3. Membership — composite PK (clientId,userId) makes this a
+    //    safe no-op on a retry.
+    await db()
+      .insert(clientMembers)
+      .values({ clientId, userId, isAdmin: true })
+      .onConflictDoNothing();
   } catch (err) {
     console.error("[finalize] account creation failed", err);
     return {
@@ -292,14 +322,26 @@ async function reuseFromExistingUser(
     .from(clients)
     .where(eq(clients.primaryUserId, userId))
     .limit(1);
-  const clientId = clientRows[0]?.id ?? "";
+  if (clientRows.length === 0) {
+    // User exists but has no client — a genuinely incomplete account
+    // (a prior finalize died mid-way and the pending row is gone).
+    // Returning ok:true with clientId:"" used to silently propagate an
+    // empty id into notifications/dispatch and a broken dashboard;
+    // surface it instead so the caller shows a real error.
+    console.error("[finalize] user exists but has no client", userId);
+    return {
+      ok: false,
+      error:
+        "Your account is partially set up. Reach out to hello@thecodedoctors.com and we'll finish it right away.",
+    };
+  }
   // No autoSigninPassword on this path — the pending row was already
   // consumed. Caller falls back to the manual sign-in form.
   return {
     ok: true,
     email: userRows[0].email!,
     userId,
-    clientId,
+    clientId: clientRows[0].id,
     autoSigninPassword: null,
   };
 }

@@ -1,6 +1,6 @@
 import { db, users, auditLog } from "@/db";
 import { sql, ne, desc, eq } from "drizzle-orm";
-import { requireStaff } from "@/lib/auth-helpers";
+import { requireSeniorStaff } from "@/lib/auth-helpers";
 
 export type StaffRow = {
   id: string;
@@ -26,7 +26,7 @@ export type StaffRow = {
  * within role.
  */
 export async function listStaffWithStats(): Promise<StaffRow[]> {
-  await requireStaff();
+  await requireSeniorStaff();
 
   const rows = await db()
     .select({
@@ -90,7 +90,7 @@ export async function teamHeadline(): Promise<{
   readonly: number;
   totpEnabled: number;
 }> {
-  await requireStaff();
+  await requireSeniorStaff();
   const rows = await db()
     .select({
       role: users.role,
@@ -127,7 +127,7 @@ export async function teamHeadline(): Promise<{
  *  Filters out client actions (e.g. patient approvals) to keep the
  *  view focused on what staff have done. */
 export async function recentStaffActivity(limit = 10) {
-  await requireStaff();
+  await requireSeniorStaff();
   const rows = await db()
     .select({
       action: auditLog.action,

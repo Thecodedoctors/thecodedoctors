@@ -1,4 +1,4 @@
-import { CheckupValidationError } from "./url-validation";
+import { CheckupValidationError, validateAndResolve } from "./url-validation";
 
 const TIMEOUT_MS = 8000;
 const MAX_BYTES = 1_000_000; // 1MB cap on body
@@ -33,6 +33,15 @@ export async function fetchPage(initialUrl: URL): Promise<FetchedPage> {
   let upgradedToHttps = false;
 
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    // SSRF guard: re-validate (DNS-resolve + reject private/loopback/
+    // link-local/metadata) the EXACT url we're about to fetch, on
+    // every hop — not just the initial url and not only post-hoc on
+    // the final url. Without this, a public url that 302s to
+    // http://169.254.169.254/ or http://10.x/ would be fetched before
+    // any check ran. validateAndResolve throws CheckupValidationError
+    // (private/dns/scheme) which the route maps to a clean 4xx.
+    await validateAndResolve(current);
+
     let res: Response;
     try {
       res = await fetch(current, {

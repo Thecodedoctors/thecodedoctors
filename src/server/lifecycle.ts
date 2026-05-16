@@ -3,7 +3,11 @@
 import { db, users, clients } from "@/db";
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { requireStaff, requireFounder } from "@/lib/auth-helpers";
+import {
+  requireStaff,
+  requireFounder,
+  requireSeniorStaff,
+} from "@/lib/auth-helpers";
 import { sendBrandEmail } from "@/lib/email";
 import { site } from "@/lib/site";
 import { recordAudit } from "@/server/audit";
@@ -206,7 +210,8 @@ export async function deleteUser(formData: FormData): Promise<LifecycleResult> {
    ──────────────────────────────────────────────────────────────────────── */
 
 export async function pauseClient(formData: FormData): Promise<LifecycleResult> {
-  const session = await requireStaff();
+  // Senior-only: pausing mutates Stripe billing (pause_collection).
+  const session = await requireSeniorStaff();
   const clientId = String(formData.get("clientId") ?? "");
   const reason = sanitizeReason(formData.get("reason"));
   if (!clientId) return { ok: false, error: "Missing patient." };
@@ -267,7 +272,8 @@ export async function pauseClient(formData: FormData): Promise<LifecycleResult> 
 export async function unpauseClient(
   formData: FormData
 ): Promise<LifecycleResult> {
-  const session = await requireStaff();
+  // Senior-only: resuming mutates Stripe billing.
+  const session = await requireSeniorStaff();
   const clientId = String(formData.get("clientId") ?? "");
   if (!clientId) return { ok: false, error: "Missing patient." };
 
