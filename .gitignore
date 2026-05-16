@@ -55,3 +55,4 @@ next-env.d.ts
 /encryption
 *.secret
 *.key
+.stripe-live-secrets.json

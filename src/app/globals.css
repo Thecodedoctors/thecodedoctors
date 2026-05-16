@@ -144,40 +144,41 @@ body {
   opacity: 0.85;
 }
 
-/* EKG line draw animation (used in hero) */
-@keyframes ekg-draw {
-  0% {
-    stroke-dashoffset: 1000;
-    opacity: 0;
-  }
-  10% {
-    opacity: 1;
-  }
-  100% {
-    stroke-dashoffset: -1000;
-    opacity: 1;
-  }
+/* ────────────────────────────────────────────────────────────────────────
+   ECG cardiac-monitor trace (hero backdrop).
+
+   A realistic P-QRS-T waveform on the path itself (see hero-video-
+   backdrop.tsx). Two stroked copies sweep across it on a normalised
+   pathLength of 2000: a faint long "afterglow" tail and a bright
+   short comet head, plus a glowing beacon that rides the exact path
+   via SVG <animateMotion>. Pure SVG/CSS + native SMIL — no JS, GPU
+   composited, Lighthouse-safe. ~5s loop = a calm ~ICU cadence.
+   ──────────────────────────────────────────────────────────────────────── */
+/* The trace is DRAWN by the sweep, never pre-drawn. pathLength is
+   normalised to 2000. The dash pattern is a single travelling window
+   of drawn line (820) followed by blank (1180) — sum 2000 = one
+   period == pathLength, so it loops perfectly seamlessly (no snap).
+   The line only ever exists inside that moving window: it's created
+   at the leading edge and un-drawn at the trailing edge, so at no
+   point is a full waveform sitting there pre-drawn. The trace's own
+   round, glowing leading cap is the single luminous draw-point — no
+   separate beacon element (it only stacked a second glow off the
+   tip). */
+@keyframes ecg-trace {
+  from { stroke-dashoffset: 0; }
+  to   { stroke-dashoffset: -2000; }
 }
 
-@keyframes ekg-pulse {
-  0%, 100% {
-    filter: drop-shadow(0 0 6px rgba(61, 217, 214, 0.35));
-  }
-  50% {
-    filter: drop-shadow(0 0 14px rgba(61, 217, 214, 0.7));
-  }
-}
-
-.ekg-line {
-  stroke-dasharray: 1000;
-  animation:
-    ekg-draw 6s linear infinite,
-    ekg-pulse 1.4s ease-in-out infinite;
+.ecg-trace {
+  stroke-dasharray: 820 1180;
+  animation: ecg-trace 6.5s linear infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ekg-line {
+  .ecg-trace {
+    /* no sweep for reduced-motion: just show the full static trace */
     animation: none;
+    stroke-dasharray: none;
   }
 }
 
