@@ -371,51 +371,44 @@ export async function upgradeSubscriptionForCurrentUser(
   // rides the higher tier for free. The throw routes into the catch
   // below → the user gets the "upgrade failed" banner and stays on
   // their current (paid) plan.
-  // If the subscription is still in its trial (e.g. a Checkup→Care
-  // conversion mid-credit, or a /trial user), an item swap with
-  // always_invoice would END the trial and charge immediately — a
-  // consent gap, and on a checkup-conversion it also hands the user
-  // the *new* (higher) tier for the WHOLE original trial window
-  // (~$1.8k of Premium for a $599 credit). Instead: keep them on
-  // trial, no charge now, and clamp trial_end so it never EXTENDS and
-  // never exceeds the credit value of the new plan (min of the two).
-  const subTrialEnd =
-    (subscription as unknown as { trial_end: number | null }).trial_end;
+  // A trial user clicking Upgrade MUST NOT receive the higher tier
+  // for free. Ending the trial NOW + always_invoice +
+  // error_if_incomplete makes Stripe charge the card synchronously
+  // for the new plan; a missing / declined / auth-required card makes
+  // .update() THROW → caught below → the user stays on their current
+  // plan and is told it failed. No more "upgraded but never charged".
+  // `trial_end:"now"` is only sent when the sub is actually trialing
+  // (Stripe rejects it on a non-trial sub). For an already-paid
+  // upgrade this is just the normal prorated charge.
+  const subTrialEnd = (
+    subscription as unknown as { trial_end: number | null }
+  ).trial_end;
   const isTrialing =
     subscription.status === "trialing" ||
     (typeof subTrialEnd === "number" && subTrialEnd * 1000 > Date.now());
 
   let updatedId: string;
   try {
-    if (isTrialing) {
-      const nowSec = Math.floor(Date.now() / 1000);
-      const cappedEnd = nowSec + checkupCreditTrialDays(plan) * 24 * 60 * 60;
-      const newTrialEnd =
-        typeof subTrialEnd === "number"
-          ? Math.min(subTrialEnd, cappedEnd)
-          : cappedEnd;
-      const updated = await stripe.subscriptions.update(
-        client.stripeSubscriptionId,
-        {
-          items: [{ id: currentItemId, price: newPriceId }],
-          proration_behavior: "none",
-          trial_end: newTrialEnd,
-          metadata: { clientId: client.id, plan, interval },
-        }
-      );
-      updatedId = updated.id;
-    } else {
-      const updated = await stripe.subscriptions.update(
-        client.stripeSubscriptionId,
-        {
-          items: [{ id: currentItemId, price: newPriceId }],
-          proration_behavior: "always_invoice",
-          payment_behavior: "error_if_incomplete",
-          metadata: { clientId: client.id, plan, interval },
-        }
-      );
-      updatedId = updated.id;
-    }
+    const updated = await stripe.subscriptions.update(
+      client.stripeSubscriptionId,
+      {
+        items: [{ id: currentItemId, price: newPriceId }],
+        proration_behavior: "always_invoice",
+        payment_behavior: "error_if_incomplete",
+        ...(isTrialing ? { trial_end: "now" as const } : {}),
+        metadata: { clientId: client.id, plan, interval },
+      },
+      // Idempotency: a double-click / two-tab submit of the SAME
+      // target upgrade within the minute can't fire two charges or
+      // two subscription updates. A genuine later retry (e.g. after
+      // fixing a declined card) uses a new bucket and is allowed.
+      {
+        idempotencyKey: `upg_${client.id}_${newPriceId}_${Math.floor(
+          Date.now() / 60000
+        )}`,
+      }
+    );
+    updatedId = updated.id;
   } catch (err) {
     console.error(
       "[billing.upgrade] Stripe subscriptions.update failed",

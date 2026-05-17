@@ -301,7 +301,13 @@ async function applySubscriptionUpdate(
   const periodEnd = periodEndUnix ? new Date(periodEndUnix * 1000) : null;
   const priceId = item?.price.id ?? null;
   const billedAmount = item?.price.unit_amount ?? 0;
+  // "Active" (has access) includes trialing — a trial user should
+  // reach the dashboard. But "paying" (counts toward MRR / real
+  // revenue) does NOT: a trialing sub has settled $0, so booking it
+  // as MRR inflated the revenue dashboard with money that may never
+  // arrive. Keep the two notions separate.
   const isActive = sub.status === "active" || sub.status === "trialing";
+  const isPaying = sub.status === "active";
 
   // Trial state syncs from Stripe — trial_end is null on paid plans.
   const trialEndsAt = subType.trial_end
@@ -366,7 +372,8 @@ async function applySubscriptionUpdate(
       currentPeriodEnd: periodEnd,
       trialEndsAt,
       cancelAtPeriodEnd: subType.cancel_at_period_end,
-      mrrCents: isActive && !subType.cancel_at_period_end ? monthlyCents : 0,
+      mrrCents:
+        isPaying && !subType.cancel_at_period_end ? monthlyCents : 0,
       status: nextStatus,
       ...(consumesCheckupCredit
         ? { checkupCreditConsumedAt: new Date() }
