@@ -49,6 +49,9 @@ jobs:
         env:
           NEXT_PUBLIC_SITE_URL: https://thecodedoctors.com
           NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${{ secrets.NEXT_PUBLIC_TURNSTILE_SITE_KEY }}
+          # Public Sentry DSN — baked into the bundle so the error
+          # boundaries (src/lib/sentry.ts) report production crashes.
+          NEXT_PUBLIC_SENTRY_DSN: ${{ secrets.NEXT_PUBLIC_SENTRY_DSN }}
 
       - name: Deploy to Cloudflare
         run: npx wrangler deploy
