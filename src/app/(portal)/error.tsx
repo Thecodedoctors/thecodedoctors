@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { captureException } from "@/lib/sentry";
 
 /**
  * Patient-portal error boundary. Without this, a throw anywhere under
@@ -18,6 +19,7 @@ export default function PortalError({
 }) {
   useEffect(() => {
     console.error("[portal error boundary]", error);
+    captureException(error, { surface: "portal", digest: error.digest });
   }, [error]);
 
   return (

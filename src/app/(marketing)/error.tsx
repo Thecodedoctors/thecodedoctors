@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { captureException } from "@/lib/sentry";
 
 /**
  * Marketing-surface error boundary. Without this, anything that throws
@@ -18,6 +19,7 @@ export default function MarketingError({
 }) {
   useEffect(() => {
     console.error("[marketing error boundary]", error);
+    captureException(error, { surface: "marketing", digest: error.digest });
   }, [error]);
 
   return (

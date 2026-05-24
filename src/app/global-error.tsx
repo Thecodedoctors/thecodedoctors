@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { captureException } from "@/lib/sentry";
 
 export default function GlobalError({
   error,
@@ -10,8 +11,8 @@ export default function GlobalError({
   reset: () => void;
 }) {
   useEffect(() => {
-    // TODO: forward to Sentry once configured (Phase 5)
     console.error(error);
+    captureException(error, { surface: "global", digest: error.digest });
   }, [error]);
 
   return (

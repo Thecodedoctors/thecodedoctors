@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { captureException } from "@/lib/sentry";
 
 /**
  * Practice-portal error boundary. Catches anything that throws inside
@@ -20,6 +21,7 @@ export default function AdminError({
     // Logged client-side and server-side; the worker tail is the
     // canonical place to read the actual stack.
     console.error("[admin error boundary]", error);
+    captureException(error, { surface: "admin", digest: error.digest });
   }, [error]);
 
   return (
@@ -49,6 +51,9 @@ export default function AdminError({
         >
           Try again
         </button>
+        {/* Plain <a>: a full reload recovers from whatever client
+            state tripped the boundary, which a soft <Link> wouldn't. */}
+        {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
         <a
           href="/"
           className="rounded-full border border-border-strong px-4 py-2 text-sm text-muted hover:border-accent hover:text-accent"
