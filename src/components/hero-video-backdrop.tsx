@@ -79,12 +79,16 @@ export function HeroVideoBackdrop() {
             ready ? "opacity-100" : "opacity-0"
           }`}
         />
-        {/* Contrast + brand tone */}
-        <div className="absolute inset-0 bg-background/78" />
+        {/* Contrast + brand tone. Base veil lightened 78→55 so the
+            video reads more clearly; the left-fade gradient still
+            keeps the headline side dark for text contrast. */}
+        <div className="absolute inset-0 bg-background/55" />
         <div className="absolute inset-0 bg-gradient-to-r from-background via-background/82 to-background/45" />
         <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-background to-transparent" />
-        {/* Darker band so the accent trace pops */}
-        <div className="absolute inset-x-0 top-1/2 h-56 -translate-y-1/2 bg-gradient-to-b from-transparent via-background/55 to-transparent" />
+        {/* Darker band so the accent trace pops. Bumped 55→78 to
+            offset the lighter base veil — the strip behind the ECG
+            line stays the same darkness as before. */}
+        <div className="absolute inset-x-0 top-1/2 h-56 -translate-y-1/2 bg-gradient-to-b from-transparent via-background/78 to-transparent" />
         <div className="absolute inset-x-0 top-1/2 h-px bg-gradient-to-r from-transparent via-border-strong/70 to-transparent opacity-50" />
         <svg
           className="absolute inset-x-0 top-1/2 mx-auto h-52 w-full max-w-6xl -translate-y-1/2"
