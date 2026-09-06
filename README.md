@@ -2,6 +2,10 @@
 
 Your website needs a doctor. We diagnose, prescribe, treat, and maintain.
 
+Live at **[thecodedoctors.com](https://thecodedoctors.com)** — a website health/maintenance SaaS built entirely around a clinical diagnostic framework (checkup → diagnosis → treatment plan), with real paying customers.
+
+Built and directed solo by a medical doctor (MBBS) transitioning into health-tech product and engineering — see [`docs/BRAND.md`](./docs/BRAND.md) for the reasoning behind the clinical framing, and [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) for the technical decisions.
+
 This repository contains the full multi-surface platform: public marketing site, client portal, and staff portal.
 
 > **For AI agents** — read [`CLAUDE.md`](./CLAUDE.md) and [`docs/ROADMAP.md`](./docs/ROADMAP.md) at the start of every session. The `docs/` folder is the source of truth for project state, decisions, and security posture.
